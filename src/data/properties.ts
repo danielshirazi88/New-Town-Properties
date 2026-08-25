@@ -164,7 +164,7 @@ export const PROPERTIES: Property[] = [
     sourcePage: 0,
     onRentRoll: false,
     notes:
-      'On the 2024 Schedule E as property J but absent from the 2025 rent roll entirely. The return reports no rent for 2024 against $15,080 of tax and $21,045 of depreciation. Needs confirming: vacant, owner-occupied, or simply missing from the rent roll.',
+      'Vacant, confirmed by the owner — which is why it carries no rent on the 2025 rent roll and none on the 2024 return either. It still costs $15,080 a year in property tax and carried $21,045 of depreciation in 2024, so it is a real drag on the portfolio rather than an omission.',
   },
   {
     id: 'n-43rd-1643',

@@ -120,7 +120,8 @@ export interface PortfolioKpis {
   apolloMaxLotRent: number
   apolloWaterRevenueMonthly: number
   apolloBaseRentMonthly: number
-  apolloFlaggedCount: number
+  /** Lots where the park owns the home as well as the land. */
+  apolloParkOwnedCount: number
 
   properties: PropertyMetrics[]
 }
@@ -327,7 +328,7 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
     apolloMaxLotRent: Math.max(...lotRents),
     apolloWaterRevenueMonthly: paying.length * APOLLO_WATER_CHARGE,
     apolloBaseRentMonthly: apolloLotMonthly - paying.length * APOLLO_WATER_CHARGE,
-    apolloFlaggedCount: APOLLO.filter((t) => t.flagged).length,
+    apolloParkOwnedCount: APOLLO.filter((t) => t.parkOwned).length,
 
     properties: props,
   }

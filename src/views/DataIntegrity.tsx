@@ -25,16 +25,14 @@ export function DataIntegrity({ k, onProperty }: { k: PortfolioKpis; onProperty:
   const grossDelta = k.commercialGross - SHEET_TOTALS.commercialGross
 
   const gaps = [
-    { label: 'Lease type not stated', count: k.leaseTypeCounts.UNKNOWN ?? 0, of: k.unitCount,
-      detail: 'Whether each lease is triple net or modified gross. Changes both NOI and value.' },
-    { label: 'No lease end date', count: k.noEndDateLeases.length, of: k.unitCount,
-      detail: 'RTS, Lamar Billboard, the 1643 garage, Florida and Unstoppable Beauty Lounge.' },
     { label: 'Square footage missing', count: k.unitCount, of: k.unitCount,
       detail: 'No unit sizes anywhere in the source, so rent per square foot cannot be computed — the standard way to compare a rent to the market.' },
+    { label: 'No lease end date', count: k.noEndDateLeases.length, of: k.unitCount,
+      detail: 'RTS, Lamar Billboard, the 1643 garage, Florida and Unstoppable Beauty Lounge.' },
     { label: 'No cap rate or appraised value', count: k.propertyCount, of: k.propertyCount,
       detail: 'Nothing in the documents implies what the properties are worth.' },
-    { label: 'No mortgage or debt detail', count: k.propertyCount, of: k.propertyCount,
-      detail: 'Without it there is no debt service, DSCR, equity position or cash-on-cash return.' },
+    { label: 'Debt detail', count: 0, of: k.propertyCount,
+      detail: 'The 2024 return reports no mortgage interest on any property, so the portfolio appears to be held free of debt and there is no debt service to model.' },
     { label: 'Operating expenses absent', count: k.propertyCount, of: k.propertyCount,
       detail: 'The sheets carry property taxes and nothing else — no insurance, water, maintenance or management.' },
   ]

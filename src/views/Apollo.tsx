@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Card, Kpi } from '../components/ui'
 import { money, num, pct } from '../lib/format'
 import {
-  APOLLO_FLAG_NOTE, APOLLO_PARKING_NOTE, APOLLO_PARKING_RENT, APOLLO_REGISTRY_LABEL,
+  APOLLO_PARK_OWNED_NOTE, APOLLO_PARKING_NOTE, APOLLO_PARKING_RENT, APOLLO_REGISTRY_LABEL,
   APOLLO_WATER_CHARGE,
 } from '../data/apollo'
 import type { ApolloTenant } from '../lib/types'
@@ -53,7 +53,8 @@ export function Apollo({ k, tenants: APOLLO }: { k: PortfolioKpis; tenants: Apol
           note={`${money(APOLLO_WATER_CHARGE)} per lot per month, included in the amount due`} />
         <Kpi label="Base lot rent" value={money(k.apolloBaseRentMonthly)} note="Monthly, net of the water charge" />
         <Kpi label="Share of portfolio" value={pct((k.apolloGross / k.grossCollected) * 100)} />
-        <Kpi label="Flagged on the registry" value={num(k.apolloFlaggedCount)} note="Marked with an asterisk" warn />
+        <Kpi label="Park-owned homes" value={num(k.apolloParkOwnedCount)}
+          note={`${k.apolloLots - k.apolloParkOwnedCount} tenant-owned · the park maintains and insures its own`} />
         <Kpi label="Rent per lot per year" value={money(k.apolloAvgLotRent * 12)} />
       </div>
 
@@ -75,14 +76,14 @@ export function Apollo({ k, tenants: APOLLO }: { k: PortfolioKpis; tenants: Apol
               </table>
             </div>
           </Card>
-          <Card title="Two things to confirm">
+          <Card title="Worth knowing">
             <div className="stack" style={{ gap: 12 }}>
               <div>
-                <div className="t-strong" style={{ marginBottom: 3 }}>The asterisks</div>
-                <p className="page-sub" style={{ margin: 0 }}>{APOLLO_FLAG_NOTE}</p>
+                <div className="t-strong" style={{ marginBottom: 3 }}>Four homes belong to the park</div>
+                <p className="page-sub" style={{ margin: 0 }}>{APOLLO_PARK_OWNED_NOTE}</p>
               </div>
               <div>
-                <div className="t-strong" style={{ marginBottom: 3 }}>Three parking spaces need a lot number</div>
+                <div className="t-strong" style={{ marginBottom: 3 }}>Five tandem spaces on two lots</div>
                 <p className="page-sub" style={{ margin: 0 }}>{APOLLO_PARKING_NOTE}</p>
               </div>
               <div>
@@ -118,7 +119,7 @@ export function Apollo({ k, tenants: APOLLO }: { k: PortfolioKpis; tenants: Apol
                 <tr key={t.id}>
                   <td>
                     <span className="t-strong">{t.name}</span>
-                    {t.flagged && <span className="badge warn" style={{ marginLeft: 6 }}>flagged</span>}
+                    {t.parkOwned && <span className="badge ok" style={{ marginLeft: 6 }}>park-owned home</span>}
                     {t.isParking && <span className="badge mute" style={{ marginLeft: 6 }}>parking</span>}
                   </td>
                   <td className="t-mute">{t.address}</td>

@@ -32,7 +32,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2013-07-01',
     leaseEnd: '2025-06-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'p1-metropcs',
@@ -44,7 +44,7 @@ export const LEASES: Lease[] = [
     statedAnnualTotal: 28230.0,
     leaseStart: '2017-10-01',
     leaseEnd: '2023-09-30',
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes:
       'Lease expired 9/30/2023 — tenant is holding over. Rent stepped from $2,190 to $2,840 in October (+29.7%). A "$50.00" annotation sits in the October column; its meaning is not stated.',
   },
@@ -62,7 +62,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2014-09-01',
     leaseEnd: '2027-08-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'p1-purpura',
@@ -75,7 +75,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2022-06-01',
     leaseEnd: '2024-05-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Lease expired 5/31/2024 — tenant is holding over.',
   },
   {
@@ -89,7 +89,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2021-04-01',
     leaseEnd: '2024-03-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Lease expired 3/31/2024 — tenant is holding over.',
   },
   {
@@ -103,7 +103,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2015-01-01',
     leaseEnd: '2024-12-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Lease expired 12/30/2024 — held over all of 2025 at a flat $2,100 with no bump taken.',
   },
   {
@@ -114,7 +114,7 @@ export const LEASES: Lease[] = [
     contacts: [{ name: 'Mariela Ibarra', phone: '773-934-3617' }],
     months: r('V', 12),
     statedAnnualTotal: 0,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'No rent recorded in any month of 2025 and no lease dates given — unit appears vacant.',
   },
   {
@@ -131,7 +131,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2024-02-01',
     leaseEnd: '2027-01-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'p1-casa-migrante',
@@ -144,7 +144,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2024-01-01',
     leaseEnd: '2026-12-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Marked for a 5% January bump but rent stayed flat all year — bump not taken.',
   },
   {
@@ -160,7 +160,7 @@ export const LEASES: Lease[] = [
     statedAnnualTotal: 16750.0,
     leaseStart: '2005-02-01',
     leaseEnd: '2026-01-31',
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Longest-standing tenant in the portfolio — in place since February 2005.',
   },
   {
@@ -173,7 +173,7 @@ export const LEASES: Lease[] = [
     statedAnnualTotal: 1100.0,
     leaseStart: '2024-09-01',
     leaseEnd: '2025-08-31',
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Only January collected. Eleven months of lost rent — the single largest vacancy line in the portfolio.',
   },
 
@@ -189,7 +189,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2017-07-31',
     leaseEnd: '2025-07-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'p2-la-michoacana',
@@ -202,7 +202,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2025-02-01',
     leaseEnd: '2028-01-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'p2-washland',
@@ -218,7 +218,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2025-03-01',
     leaseEnd: '2027-02-28',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes:
       'Rent went DOWN 7.5% in March ($6,205 → $5,740) when the new lease commenced — the only negative reset in the portfolio.',
   },
@@ -236,7 +236,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2022-11-01',
     leaseEnd: '2025-10-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'p2-lucky29',
@@ -249,7 +249,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2025-07-01',
     leaseEnd: '2028-10-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'July is a part-month ($2,245) at the changeover; new lease rate of $3,745 begins in August.',
   },
   {
@@ -266,7 +266,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2010-07-31',
     leaseEnd: '2026-05-31',
     statedEscalationPct: 3,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'The only 3% escalator in the portfolio; every other stated bump is 4% or 5%.',
   },
   {
@@ -283,7 +283,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2022-06-01',
     leaseEnd: '2028-03-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
 
   // ─── Mannheim Plaza — 1501–1505 N Mannheim ─────────────────────────────────
@@ -301,7 +301,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2018-02-01',
     leaseEnd: '2026-01-31',
     statedEscalationPct: 4,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Largest single commercial rent line in the portfolio.',
   },
   {
@@ -318,7 +318,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2022-01-01',
     leaseEnd: '2026-12-31',
     statedEscalationPct: 4,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Marked for a 4% January bump but rent stayed flat all year — bump not taken.',
   },
   {
@@ -335,7 +335,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2024-07-01',
     leaseEnd: '2029-06-30',
     statedEscalationPct: 4,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Longest remaining term in the portfolio — runs to June 2029.',
   },
   {
@@ -352,7 +352,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2020-11-01',
     leaseEnd: '2025-10-31',
     statedEscalationPct: 4,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
 
   // ─── West Plaza — 1901–1925 N Mannheim ─────────────────────────────────────
@@ -370,7 +370,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2018-09-01',
     leaseEnd: '2029-08-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'wp-wrist-work-cuts',
@@ -383,7 +383,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2021-05-01',
     leaseEnd: '2026-04-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'wp-massage-spa',
@@ -399,7 +399,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2023-10-07',
     leaseEnd: '2028-11-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'wp-silk-royal-nails',
@@ -412,7 +412,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2023-04-01',
     leaseEnd: '2028-03-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'wp-panda-dance',
@@ -428,7 +428,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2014-07-01',
     leaseEnd: '2026-04-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Source sheet writes the expiry as 04/31/2026, which is not a real date — read here as 4/30/2026.',
   },
   {
@@ -442,7 +442,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2023-10-17',
     leaseEnd: '2025-05-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Lease expired 5/31/2025 — tenant is holding over.',
   },
   {
@@ -459,7 +459,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2025-11-11',
     leaseEnd: '2028-11-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes:
       'Four months vacant (Jul–Oct) plus a free-rent month in November before the new lease began. Worst downtime line of the year.',
   },
@@ -474,7 +474,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2019-11-01',
     leaseEnd: '2025-10-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'wp-perkins',
@@ -491,7 +491,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2023-08-01',
     leaseEnd: '2025-07-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Lease expired 7/31/2025 — tenant is holding over.',
   },
   {
@@ -505,7 +505,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2023-05-01',
     leaseEnd: '2026-04-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
 
   // ─── 1500 N Mannheim ───────────────────────────────────────────────────────
@@ -520,7 +520,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2013-06-01',
     leaseEnd: '2025-05-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Lease expired 5/30/2025 — tenant is holding over on the portfolio’s second-largest rent line.',
   },
 
@@ -535,7 +535,7 @@ export const LEASES: Lease[] = [
     statedAnnualTotal: 57408.0,
     leaseStart: '2005-11-01',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'No expiration date given on the source sheet.',
   },
   {
@@ -549,7 +549,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2024-01-15',
     leaseEnd: '2029-01-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Marked for a 5% January bump but rent stayed flat all year — bump not taken.',
   },
 
@@ -564,7 +564,7 @@ export const LEASES: Lease[] = [
     statedAnnualTotal: 55110.0,
     leaseStart: '2025-03-07',
     leaseEnd: '2030-02-28',
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes:
       'Three months vacant then two months free rent to land the tenant. Rent then stepped DOWN from $7,930 to $7,730 in November. Longest term in the portfolio — runs to February 2030.',
   },
@@ -578,7 +578,7 @@ export const LEASES: Lease[] = [
     statedAnnualTotal: 20800.0,
     leaseStart: '2025-10-01',
     leaseEnd: '2026-09-30',
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Two months vacant, then re-let at $2,500 — a 31.6% increase over the prior $1,900.',
   },
 
@@ -594,7 +594,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2025-08-01',
     leaseEnd: '2028-07-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
 
   // ─── 1538 N Mannheim ───────────────────────────────────────────────────────
@@ -609,7 +609,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2025-08-01',
     leaseEnd: '2028-07-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'pp1538-lamar',
@@ -623,7 +623,7 @@ export const LEASES: Lease[] = [
     ],
     months: r(377, 12),
     statedAnnualTotal: 4524.0,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Billboard ground lease. No lease dates given on the source sheet.',
   },
 
@@ -636,7 +636,7 @@ export const LEASES: Lease[] = [
     contacts: [],
     months: ['V', ...r(2300, 11)],
     statedAnnualTotal: 25300.0,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'January vacant. No tenant name or lease dates recorded on the source sheet.',
   },
 
@@ -651,7 +651,7 @@ export const LEASES: Lease[] = [
     statedAnnualTotal: 25800.0,
     leaseStart: '2024-04-01',
     leaseEnd: '2026-03-31',
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Took a 10% bump in April — the largest scheduled increase in the portfolio.',
   },
   {
@@ -663,7 +663,7 @@ export const LEASES: Lease[] = [
     months: r(900, 12),
     statedAnnualTotal: 10800.0,
     leaseStart: '2024-04-01',
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'No expiration date given on the source sheet.',
   },
 
@@ -682,7 +682,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2021-08-01',
     leaseEnd: '2027-07-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'm1638-divine-studio',
@@ -695,7 +695,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2025-06-16',
     leaseEnd: '2030-06-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'One vacant month and one free month at the changeover; re-let at $2,000, up 6.0%.',
   },
   {
@@ -709,7 +709,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2025-07-01',
     leaseEnd: '2028-06-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'm1638-integra',
@@ -722,7 +722,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2025-07-01',
     leaseEnd: '2028-06-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
 
   // ─── 1401 N 25th Avenue ────────────────────────────────────────────────────
@@ -741,7 +741,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2013-10-01',
     leaseEnd: '2025-09-30',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Lease expired 9/30/2025 — tenant is holding over.',
   },
   {
@@ -755,7 +755,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2016-12-01',
     leaseEnd: '2025-03-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Lease expired 3/31/2025 — tenant is holding over.',
   },
   {
@@ -769,7 +769,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2025-11-01',
     leaseEnd: '2028-10-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes:
       'Rent rose to $4,075 in Aug–Sep, then the unit went vacant in October and came back at the old $3,675 — a $400/month step-down at re-let.',
   },
@@ -787,7 +787,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2021-10-01',
     leaseEnd: '2027-10-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
   },
   {
     id: 'a25-genuine-detailing',
@@ -800,7 +800,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2006-12-01',
     leaseEnd: '2025-03-31',
     statedEscalationPct: 5,
-    leaseType: 'UNKNOWN',
+    leaseType: 'MG',
     notes: 'Lease expired 3/31/2025 — tenant is holding over. In place since December 2006.',
   },
 ]

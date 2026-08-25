@@ -32,7 +32,7 @@ export function ApolloRoll({
           <tr>
             <th>Tenant</th>
             <th>Lot address</th>
-            <th>Tenancy</th>
+            <th>Home</th>
             <th className="num">Monthly due</th>
             <th className="num">Water</th>
             <th className="num">Base rent</th>
@@ -45,12 +45,18 @@ export function ApolloRoll({
             <tr key={t.id}>
               <td>
                 <span className="t-strong">{t.name}</span>
-                {t.flagged && <span className="badge warn" style={{ marginLeft: 6 }}>flagged</span>}
+                {t.parkOwned && (
+                  <span className="badge ok" style={{ marginLeft: 6 }} title="The park owns this home, not the tenant">
+                    park-owned home
+                  </span>
+                )}
                 {t.isParking && <span className="badge mute" style={{ marginLeft: 6 }}>parking</span>}
               </td>
               <td className="t-mute">{t.address}</td>
               <td>
-                <span className="badge mute">{t.isParking ? 'Parking space' : 'Month to month'}</span>
+                <span className="badge mute">
+                  {t.isParking ? 'Parking space' : t.parkOwned ? 'Park-owned' : 'Tenant-owned'}
+                </span>
               </td>
               <td className="num t-strong">
                 {t.amountDue > 0 ? money(t.amountDue) : <span className="t-mute">Not listed</span>}

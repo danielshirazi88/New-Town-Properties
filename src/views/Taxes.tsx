@@ -21,6 +21,9 @@ export function Taxes({
 }) {
   const [showPrior, setShowPrior] = useState(true)
   const [focus, setFocus] = useState<string | null>(null)
+  // A cell reads as money until you click into it, then drops to a plain number
+  // so it can be typed over without fighting the formatting.
+  const [editingCell, setEditingCell] = useState<string | null>(null)
 
   // One worksheet row per property on the return, ordered as the form letters it.
   const rows = useMemo(() =>
@@ -207,8 +210,15 @@ export function Taxes({
                     <td key={r.prior.letter} className="num"
                       style={focus === r.prior.letter ? { background: 'var(--surface-2)' } : undefined}>
                       <input
-                        value={v === 0 ? '' : String(v)}
-                        placeholder="0"
+                        value={
+                          editingCell === `${r.prior.propertyId}:${l.key}`
+                            ? (v === 0 ? '' : String(v))
+                            : (v === 0 ? '' : money(v))
+                        }
+                        placeholder="$0"
+                        inputMode="numeric"
+                        onFocus={() => setEditingCell(`${r.prior.propertyId}:${l.key}`)}
+                        onBlur={() => setEditingCell(null)}
                         onChange={(e) => set(r.prior.propertyId, l.key, e.target.value)}
                         style={{
                           width: '100%', textAlign: 'right', padding: '4px 6px',

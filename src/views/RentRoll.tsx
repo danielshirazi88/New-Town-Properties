@@ -242,21 +242,23 @@ export function RentRoll({
       </div>
 
       <div className="section">
-        <Card title="Lease structure" hint="triple net vs modified gross">
+        <Card title="Lease structure" hint="modified gross throughout">
           <p className="page-sub" style={{ marginTop: 0 }}>
-            The source workbook records rent, dates and escalations, but never states whether a lease is
-            triple net or modified gross — so all {k.unitCount} sit unclassified, covering{' '}
-            <strong>{money(k.unknownLeaseTypeRent)}</strong> of income.
+            All {k.unitCount} leases are <strong>modified gross</strong>, confirmed by the owner —
+            covering {money(k.commercialGross)} of income. Not one is triple net.
           </p>
-          <div className="callout" style={{ marginTop: 12, marginBottom: 0 }}>
-            <div className="callout-title">What the numbers imply</div>
+          <div className="callout neutral" style={{ marginTop: 12, marginBottom: 0 }}>
+            <div className="callout-title">What that means for the numbers</div>
             <p>
-              The sheets compute each property's net by subtracting the property tax bill from gross rent.
-              A landlord only carries that cost when the tenant is <em>not</em> reimbursing it — under a true
-              triple net lease the taxes pass through to the tenant. That points to these being gross or
-              modified gross leases, but it is an inference from the bookkeeping, not something the documents
-              say. Confirming it against the actual lease documents is the single highest-value data fix
-              available: it changes both the NOI and the valuation.
+              Under modified gross the landlord carries the operating costs rather than billing them
+              back, which is exactly what the source sheets show: they reach net by subtracting the
+              property tax bill from gross rent. A triple net portfolio would pass those taxes through
+              to tenants and the same rent roll would be worth more.
+            </p>
+            <p>
+              So the {money(k.totalTaxes)} tax bill is genuinely the landlord's, and so is everything
+              logged in Expenses. The valuation model charges both against NOI rather than assuming
+              any recovery — which is the conservative and, here, the correct treatment.
             </p>
           </div>
         </Card>

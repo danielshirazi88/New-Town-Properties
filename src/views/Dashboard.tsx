@@ -66,8 +66,8 @@ export function Dashboard({
             note={`${money(k.totalForgoneFromMissedBumps)} left on the table`} warn />
           <Kpi label="Vacancy & free rent" value={money(k.vacancyLoss + k.concessionLoss)}
             note={`${k.totalDarkMonths} months collected nothing`} warn />
-          <Kpi label="Lease type unclassified" value={`${k.leaseTypeCounts.UNKNOWN ?? 0} of ${k.unitCount}`}
-            note="Triple net vs modified gross not in the source" warn />
+          <Kpi label="Vacant unit at 1211 S Prairie" value={money(15080)}
+            note="A year of tax on a unit earning nothing" warn />
           <Kpi label="No end date on file" value={num(k.noEndDateLeases.length)}
             note="Leases with no expiration recorded" warn />
         </div>

@@ -94,8 +94,16 @@ export interface ApolloTenant {
   /** Total monthly amount due, inclusive of the $75 water charge. */
   amountDue: number
   contacts: Contact[]
-  /** The asterisk that appears beside some names on the registry. Meaning unconfirmed. */
-  flagged: boolean
+  /**
+   * The asterisk beside some names on the registry: the home on that lot is
+   * owned by the park rather than by the tenant.
+   *
+   * It changes what the rent is for. On a tenant-owned lot the park collects
+   * ground rent and the tenant maintains their own home; on a park-owned one the
+   * park owns the structure too, so it carries the maintenance, the insurance and
+   * the depreciation — and the rent covers both the land and the home.
+   */
+  parkOwned: boolean
   /** Non-dwelling rentals such as tandem parking spaces. */
   isParking?: boolean
 }

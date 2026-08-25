@@ -180,6 +180,40 @@ describe('Apollo', () => {
   })
 })
 
+describe('confirmed by the owner', () => {
+  it('classifies every lease as modified gross', () => {
+    for (const l of LEASES) expect(l.leaseType, l.id).toBe('MG')
+    const k = computeKpis()
+    expect(k.leaseTypeCounts.UNKNOWN ?? 0).toBe(0)
+    expect(k.leaseTypeCounts.MG).toBe(LEASES.length)
+  })
+
+  it('marks four Apollo homes as park-owned', () => {
+    const owned = APOLLO_TENANTS.filter((t) => t.parkOwned)
+    expect(owned).toHaveLength(4)
+    expect(owned.map((t) => t.name.split(',')[0]).sort())
+      .toEqual(['Gomez', 'Gonzalez', 'Jimenez', 'Mejia'])
+    // Park-owned status attaches to homes, never to a parking space.
+    for (const t of APOLLO_TENANTS.filter((x) => x.isParking)) expect(t.parkOwned).toBe(false)
+  })
+
+  it('puts all five parking spaces on the two named lots', () => {
+    const parking = APOLLO_TENANTS.filter((t) => t.isParking)
+    expect(parking).toHaveLength(5)
+    for (const p of parking) expect(p.address).toMatch(/42(11|09) Apollo Lane/)
+  })
+
+  it('carries the vacant Chicago unit as a cost, not as income', () => {
+    const k = computeKpis()
+    const prairie = k.properties.find((p) => p.property.id === 'prairie-1211')!
+    expect(prairie.collected).toBe(0)
+    expect(prairie.taxBill).toBe(15080)
+    expect(prairie.netAfterTax).toBe(-15080)
+    // Vacant and off the rent roll, so it must not disturb the reconciliation.
+    expect(prairie.property.onRentRoll).toBe(false)
+  })
+})
+
 describe('valuation', () => {
   it('capitalises NOI at the given rate', () => {
     expect(valueAtCap(100000, 8)).toBeCloseTo(1250000, 2)
