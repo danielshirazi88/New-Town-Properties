@@ -20,9 +20,19 @@ credentials stay on the server.
 1. Railway → **New Project → Deploy from GitHub repo** → pick this repository.
 2. In the same project: **New → Database → Add PostgreSQL**.
 
-Railway sets `DATABASE_URL` on the service automatically once the database is in
-the project. The app creates its own tables on first boot — there is no schema to
-run by hand.
+**Then connect them.** Adding the database to the project does *not* by itself
+make it visible to the app. On the app service, go to **Variables** and add a
+reference:
+
+```
+DATABASE_URL = ${{Postgres.DATABASE_URL}}
+```
+
+Type `${{` in the value box and Railway offers the database's variables. This is
+the step that is easy to miss, and the symptom is a **healthcheck failure** with
+a build and deploy that both went green.
+
+The app creates its own tables on first boot — there is no schema to run by hand.
 
 ## 2. Set two variables
 
@@ -44,6 +54,18 @@ Push to the branch and Railway rebuilds and redeploys on its own. No files to
 email, nothing for him to install.
 
 ---
+
+## When the healthcheck fails
+
+`/api/health` answers even when the database is unreachable, and says why:
+
+```json
+{"ok":false,"database":"unavailable","error":"DATABASE_URL is not set — …"}
+```
+
+The deploy logs carry the same message, plus the exact variable to add. The
+server retries the connection ten times with backoff before giving up, so a
+database that is merely slow to start resolves itself.
 
 ## Checking it worked
 

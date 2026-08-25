@@ -96,7 +96,20 @@ app.post('/api/history/:id/restore', requireAuth, async (req, res) => {
   }
 })
 
-app.get('/api/health', (_req, res) => res.json({ ok: true }))
+/**
+ * Health.
+ *
+ * Reports *why* it is unhealthy rather than just failing. A deploy whose
+ * database is not wired up should say so in one line, not present as an opaque
+ * healthcheck timeout with nothing to go on.
+ */
+let dbReady = false
+let dbError = null
+
+app.get('/api/health', (_req, res) => {
+  if (dbReady) return res.json({ ok: true, database: 'connected' })
+  res.status(503).json({ ok: false, database: 'unavailable', error: dbError })
+})
 
 /* ── Front-end ───────────────────────────────────────────────────────────── */
 
@@ -113,15 +126,44 @@ app.use((req, res) => {
   res.sendFile(path.join(dist, 'index.html'))
 })
 
+/* ── Startup ─────────────────────────────────────────────────────────────── */
+
 const port = process.env.PORT || 3000
-migrate()
-  .then(() => {
-    app.listen(port, () => {
-      console.log(`New Town Properties on :${port}`)
-      console.log(authRequired() ? 'Password protection is ON.' : 'WARNING: APP_PASSWORD not set — the site is open.')
-    })
-  })
-  .catch((err) => {
-    console.error('Could not start: database migration failed.', err)
-    process.exit(1)
-  })
+
+// Listen first, migrate second. A managed Postgres is often still starting when
+// the app container is ready, so refusing to listen until the database answers
+// turns a few seconds of normal startup lag into a failed deploy.
+app.listen(port, '0.0.0.0', () => {
+  console.log(`New Town Properties listening on 0.0.0.0:${port}`)
+  console.log(authRequired()
+    ? 'Password protection is ON.'
+    : 'WARNING: APP_PASSWORD is not set — anyone with the URL can read and edit the portfolio.')
+})
+
+async function connect(attempt = 1) {
+  try {
+    await migrate()
+    dbReady = true
+    dbError = null
+    console.log('Database ready.')
+  } catch (err) {
+    dbError = err.message
+    const missing = !process.env.DATABASE_URL
+    console.error(`Database not ready (attempt ${attempt}): ${err.message}`)
+    if (missing) {
+      console.error(
+        'DATABASE_URL is not set on this service. Adding a Postgres database to the\n' +
+        'project does not by itself expose it here — add a variable on THIS service:\n' +
+        '    DATABASE_URL = ${{Postgres.DATABASE_URL}}',
+      )
+    }
+    if (attempt < 10) {
+      const wait = Math.min(30_000, 2 ** attempt * 500)
+      setTimeout(() => connect(attempt + 1), wait)
+    } else {
+      console.error('Giving up after 10 attempts. Fix the database configuration and redeploy.')
+    }
+  }
+}
+
+void connect()
