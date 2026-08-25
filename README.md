@@ -25,10 +25,10 @@ There is no server and no database.
 |---|---|
 | **Executive dashboard** | Total income, net after tax, month-by-month income for the whole portfolio and for every property, what needs attention |
 | **Properties** | Every holding, with a rent roll, a month-by-month grid and an expense tab per property |
-| **Rent roll** | Every tenant — rent, bump, lease dates, tenure and phone numbers. Exports to CSV |
+| **Rent roll** | Every tenant in the portfolio — the 52 commercial suites and the 37 Apollo lots, filterable by segment. Exports to CSV |
 | **Lease expirations** | Sorted by urgency, from already-lapsed through to beyond a year |
 | **Annual bumps** | Contracted escalation against what the rent actually did |
-| **Apollo park** | The trailer park — 37 lots, water recovery, base rent, full registry |
+| **Apollo park** | The trailer park — 37 lots, water recovery, base rent, full registry (also reachable from Properties) |
 | **Expenses** | Manual entry by property and category, with receipt/invoice upload |
 | **Valuation** | NOI and implied value across cap rates, on adjustable assumptions |
 | **Data integrity** | Reconciliation against the printed totals, and what the source documents don't contain |

@@ -10,6 +10,7 @@ import { Apollo } from './views/Apollo'
 import { DataIntegrity } from './views/DataIntegrity'
 import { computeKpis } from './lib/portfolio'
 import { loadExpenses, saveExpenses, type Expense } from './lib/expenses'
+import { APOLLO_TENANTS } from './data/apollo'
 import { money } from './lib/format'
 
 type Tab =
@@ -41,7 +42,7 @@ export default function App() {
   const nav: { id: Tab; label: string; count?: string; group: string }[] = [
     { id: 'dashboard', label: 'Executive dashboard', group: 'Overview' },
     { id: 'properties', label: 'Properties', count: String(k.propertyCount), group: 'Overview' },
-    { id: 'rentroll', label: 'Rent roll', count: String(k.unitCount), group: 'Tenants' },
+    { id: 'rentroll', label: 'Rent roll', count: String(k.unitCount + APOLLO_TENANTS.filter((t) => !t.isParking).length), group: 'Tenants' },
     { id: 'expirations', label: 'Lease expirations', count: String(k.expiredLeases.length + k.expiring12.length), group: 'Tenants' },
     { id: 'escalations', label: 'Annual bumps', count: String(k.bumpsNotTaken.length), group: 'Tenants' },
     { id: 'apollo', label: 'Apollo park', count: String(k.apolloLots), group: 'Tenants' },

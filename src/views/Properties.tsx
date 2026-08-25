@@ -4,6 +4,8 @@ import { Card, Empty, ExpiryBadge, Kpi } from '../components/ui'
 import { MONTHS, cellAmount, collected, isDark, realisedEscalationPct } from '../lib/finance'
 import { dateLabel, money, num, pct, signedPct } from '../lib/format'
 import { rollup, type Expense } from '../lib/expenses'
+import { ApolloRoll } from '../components/ApolloRoll'
+import { APOLLO_REGISTRY_LABEL, APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../data/apollo'
 import type { PortfolioKpis } from '../lib/portfolio'
 import type { PropertyMetrics } from '../lib/finance'
 
@@ -51,12 +53,15 @@ export function Properties({
           <tbody>
             {ranked.map((m) => {
               const spend = expenses.filter((e) => e.propertyId === m.property.id).reduce((a, e) => a + e.amount, 0)
+              // Apollo's tenants live in the lot registry rather than in lease rows.
+              const isApollo = m.property.id === 'apollo'
+              const units = isApollo ? APOLLO_TENANTS.filter((t) => !t.isParking).length : m.unitCount
               return (
                 <tr key={m.property.id} className="clickable" onClick={() => onSelect(m.property.id)}>
                   <td className="t-strong">{m.property.name}</td>
                   <td className="t-mute t-nowrap">{m.property.city}{m.property.state !== '—' ? `, ${m.property.state}` : ''}</td>
-                  <td className="num">{m.unitCount || <span className="t-mute">—</span>}</td>
-                  <td className="num">{m.unitCount ? pct(m.physicalOccupancyPct, 0) : <span className="t-mute">—</span>}</td>
+                  <td className="num">{units || <span className="t-mute">—</span>}</td>
+                  <td className="num">{isApollo ? <span className="t-mute">—</span> : m.unitCount ? pct(m.physicalOccupancyPct, 0) : <span className="t-mute">—</span>}</td>
                   <td className="num t-strong">{money(m.collected)}</td>
                   <td className="num t-mute">{money(m.taxBill)}</td>
                   <td className="num">{money(m.netAfterTax)}</td>
@@ -70,7 +75,7 @@ export function Properties({
           <tfoot>
             <tr>
               <td className="label" colSpan={2}>Portfolio</td>
-              <td className="num">{num(k.unitCount)}</td>
+              <td className="num">{num(k.unitCount + APOLLO_TENANTS.filter((t) => !t.isParking).length)}</td>
               <td className="num">{pct(k.physicalOccupancyPct, 0)}</td>
               <td className="num">{money(k.grossCollected)}</td>
               <td className="num">{money(k.totalTaxes)}</td>
@@ -114,6 +119,22 @@ function PropertyDetail({
   onAddExpense: (id: string) => void
 }) {
   const [tab, setTab] = useState<'rent' | 'months' | 'expenses'>('rent')
+
+  const apolloStats = (() => {
+    const paying = APOLLO_TENANTS.filter((t) => !t.isParking)
+    const rents = paying.map((t) => t.amountDue).sort((a, b) => a - b)
+    const monthly = rents.reduce((a, b) => a + b, 0)
+    const mid = Math.floor(rents.length / 2)
+    return {
+      monthly,
+      avg: monthly / rents.length,
+      median: rents.length % 2 ? rents[mid] : (rents[mid - 1] + rents[mid]) / 2,
+      min: rents[0],
+      max: rents[rents.length - 1],
+      water: paying.length * APOLLO_WATER_CHARGE,
+    }
+  })()
+
   const mine = expenses.filter((e) => e.propertyId === m.property.id)
   const roll = rollup(mine)
   const noiAfterExpenses = m.netAfterTax - roll.operating
@@ -136,17 +157,38 @@ function PropertyDetail({
         <Kpi label="Logged expenses" value={money(roll.total)}
           note={roll.count ? `${roll.count} entries · ${money(roll.operating)} operating` : 'None logged yet'} />
         <Kpi label="Net after tax & expenses" value={money(noiAfterExpenses)} note="Capital spend excluded" />
-        <Kpi label="Units" value={m.unitCount ? num(m.unitCount) : '—'}
-          note={m.unitCount ? `${m.occupiedUnits} occupied · ${m.vacantUnits} vacant` : 'Reported as a single annual figure'} />
-        <Kpi label="Occupancy" value={m.unitCount ? pct(m.physicalOccupancyPct, 0) : '—'}
-          note={m.unitCount ? `${pct(m.economicOccupancyPct)} economic` : undefined} />
-        <Kpi label="WALT" value={m.walt > 0 ? `${m.walt.toFixed(2)} yr` : '—'}
-          note={m.expiredCount ? `${m.expiredCount} lease${m.expiredCount === 1 ? '' : 's'} already lapsed` : undefined}
-          warn={m.expiredCount > 0} />
-        <Kpi label="Expiring within a year" value={num(m.expiringNext12)} note={money(m.rentAtRiskNext12)} warn={m.expiringNext12 > 0} />
-        <Kpi label="Largest tenant" value={m.largestTenant ? pct(m.largestTenant.sharePct) : '—'} small note={m.largestTenant?.tenant} />
-        <Kpi label="Vacancy & free rent" value={money(m.vacancyLoss + m.concessionLoss)} note={`${m.darkMonths} dark months`} />
-        <Kpi label="December monthly rent" value={money(m.exitMonthlyRent)} note={`${money(m.runRate)} annualised`} />
+        <Kpi label={m.property.id === 'apollo' ? 'Lots' : 'Units'}
+          value={m.property.id === 'apollo'
+            ? num(APOLLO_TENANTS.filter((t) => !t.isParking).length)
+            : m.unitCount ? num(m.unitCount) : '—'}
+          note={m.property.id === 'apollo'
+            ? `plus ${APOLLO_TENANTS.filter((t) => t.isParking).length} tandem parking spaces`
+            : m.unitCount ? `${m.occupiedUnits} occupied · ${m.vacantUnits} vacant` : 'Reported as a single annual figure'} />
+        {m.property.id === 'apollo' ? (
+          // Occupancy, WALT and expiry mean nothing on month-to-month lots —
+          // show what actually varies between them instead of six dashes.
+          <>
+            <Kpi label="Average lot" value={money(apolloStats.avg)} note={`Median ${money(apolloStats.median)}`} />
+            <Kpi label="Cheapest lot" value={money(apolloStats.min)} />
+            <Kpi label="Priciest lot" value={money(apolloStats.max)} />
+            <Kpi label="Billed monthly" value={money(apolloStats.monthly)} note={`${money(apolloStats.monthly * 12)} annualised`} />
+            <Kpi label="Water recovery" value={money(apolloStats.water)}
+              note={`${money(APOLLO_WATER_CHARGE)} per lot, included in the amount due`} />
+            <Kpi label="Base lot rent" value={money(apolloStats.monthly - apolloStats.water)} note="Monthly, net of water" />
+          </>
+        ) : (
+          <>
+            <Kpi label="Occupancy" value={m.unitCount ? pct(m.physicalOccupancyPct, 0) : '—'}
+              note={m.unitCount ? `${pct(m.economicOccupancyPct)} economic` : undefined} />
+            <Kpi label="WALT" value={m.walt > 0 ? `${m.walt.toFixed(2)} yr` : '—'}
+              note={m.expiredCount ? `${m.expiredCount} lease${m.expiredCount === 1 ? '' : 's'} already lapsed` : undefined}
+              warn={m.expiredCount > 0} />
+            <Kpi label="Expiring within a year" value={num(m.expiringNext12)} note={money(m.rentAtRiskNext12)} warn={m.expiringNext12 > 0} />
+            <Kpi label="Largest tenant" value={m.largestTenant ? pct(m.largestTenant.sharePct) : '—'} small note={m.largestTenant?.tenant} />
+            <Kpi label="Vacancy & free rent" value={money(m.vacancyLoss + m.concessionLoss)} note={`${m.darkMonths} dark months`} />
+            <Kpi label="December monthly rent" value={money(m.exitMonthlyRent)} note={`${money(m.runRate)} annualised`} />
+          </>
+        )}
       </div>
 
       <div className="section">
@@ -159,7 +201,20 @@ function PropertyDetail({
         </div>
 
         {tab === 'rent' && (
-          m.leases.length === 0
+          m.property.id === 'apollo'
+            ? (
+              <>
+                <p className="page-sub" style={{ marginTop: 0 }}>
+                  {APOLLO_TENANTS.filter((t) => !t.isParking).length} lots plus{' '}
+                  {APOLLO_TENANTS.filter((t) => t.isParking).length} tandem parking spaces, from the{' '}
+                  {APOLLO_REGISTRY_LABEL}. Lots are month to month, so there are no lease end dates or
+                  annual bumps to show. The 2025 sheet gives Apollo only as an annual total, which is why
+                  the month-by-month tab shows it spread evenly rather than measured.
+                </p>
+                <ApolloRoll tenants={[...APOLLO_TENANTS].sort((a, b) => a.name.localeCompare(b.name))} />
+              </>
+            )
+            : m.leases.length === 0
             ? <Empty>This property is reported as a single annual figure with no unit-level detail.</Empty>
             : (
               <div className="table-wrap">
