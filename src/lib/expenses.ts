@@ -76,6 +76,23 @@ const LS_KEY = 'ntp.expenses.v1'
 const DB_NAME = 'ntp-receipts'
 const DB_STORE = 'files'
 
+/**
+ * Whether this browser will actually persist anything. Safari blocks both
+ * localStorage and IndexedDB on a `file://` origin, so a page opened straight
+ * from disk can display fine and still silently drop every expense entered.
+ * The Expenses view checks this and says so rather than pretending it saved.
+ */
+export function storageAvailable(): boolean {
+  try {
+    const probe = '__ntp_probe__'
+    localStorage.setItem(probe, '1')
+    localStorage.removeItem(probe)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function loadExpenses(): Expense[] {
   try {
     const raw = localStorage.getItem(LS_KEY)

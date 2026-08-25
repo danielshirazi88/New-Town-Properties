@@ -5,7 +5,7 @@ import { MONTHS } from '../lib/finance'
 import { money, num } from '../lib/format'
 import {
   CAPITAL_LEANING, EXPENSE_CATEGORIES, download, expensesToCsv, humanSize, newId,
-  openReceipt, putReceipt, deleteReceipt, rollup,
+  openReceipt, putReceipt, deleteReceipt, rollup, storageAvailable,
   type Expense, type ExpenseCategory, type ExpenseKind, type ReceiptMeta,
 } from '../lib/expenses'
 import type { PortfolioKpis } from '../lib/portfolio'
@@ -118,6 +118,16 @@ export function Expenses({
         </p>
       </div>
 
+      {!storageAvailable() && (
+        <div className="callout">
+          <div className="callout-title">This copy can’t save anything</div>
+          <p>
+            The page is open directly from a file, and the browser blocks storage on files opened that
+            way. You can look around, but any expense entered here will be gone when the tab closes.
+            Open the hosted copy instead, or run the app with <code>npm run dev</code>.
+          </p>
+        </div>
+      )}
       <div className="toolbar">
         <button className="btn primary" onClick={() => setEditing(emptyDraft(propertyFilter === 'all' ? PROPERTIES[0].id : propertyFilter))}>
           + Add expense
