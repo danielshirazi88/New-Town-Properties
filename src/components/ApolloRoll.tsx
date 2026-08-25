@@ -20,7 +20,9 @@ export function ApolloRoll({
   caption?: string
 }) {
   const paying = tenants.filter((t) => !t.isParking)
-  const monthly = paying.reduce((a, t) => a + t.amountDue, 0)
+  const parking = tenants.filter((t) => t.isParking)
+  const monthly = tenants.reduce((a, t) => a + t.amountDue, 0)
+  // The $75 water charge rides on dwelling lots only, never on a parking space.
   const water = paying.length * APOLLO_WATER_CHARGE
 
   return (
@@ -53,8 +55,10 @@ export function ApolloRoll({
               <td className="num t-strong">
                 {t.amountDue > 0 ? money(t.amountDue) : <span className="t-mute">Not listed</span>}
               </td>
-              <td className="num t-mute">{t.amountDue > 0 ? money(APOLLO_WATER_CHARGE) : '—'}</td>
-              <td className="num">{t.amountDue > 0 ? money(t.amountDue - APOLLO_WATER_CHARGE) : '—'}</td>
+              <td className="num t-mute">{t.isParking || t.amountDue === 0 ? '—' : money(APOLLO_WATER_CHARGE)}</td>
+              <td className="num">
+                {t.amountDue === 0 ? '—' : money(t.isParking ? t.amountDue : t.amountDue - APOLLO_WATER_CHARGE)}
+              </td>
               <td className="num t-mute">{t.amountDue > 0 ? money(t.amountDue * 12) : '—'}</td>
               <td className="t-mute" style={{ fontSize: 11.5 }}>
                 {t.contacts.length === 0 ? '—' : t.contacts.map((c, i) => (
@@ -69,7 +73,7 @@ export function ApolloRoll({
         <tfoot>
           <tr>
             <td className="label" colSpan={3}>
-              {caption ?? `${paying.length} lots billed`}
+              {caption ?? `${paying.length} lots + ${parking.length} parking`}
             </td>
             <td className="num">{money(monthly)}</td>
             <td className="num">{money(water)}</td>

@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Card, Kpi } from '../components/ui'
 import { money, num, pct } from '../lib/format'
-import { APOLLO_FLAG_NOTE, APOLLO_REGISTRY_LABEL, APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../data/apollo'
+import {
+  APOLLO_FLAG_NOTE, APOLLO_PARKING_NOTE, APOLLO_PARKING_RENT, APOLLO_REGISTRY_LABEL,
+  APOLLO_TENANTS, APOLLO_WATER_CHARGE,
+} from '../data/apollo'
 import type { PortfolioKpis } from '../lib/portfolio'
 
 export function Apollo({ k }: { k: PortfolioKpis }) {
@@ -37,8 +40,11 @@ export function Apollo({ k }: { k: PortfolioKpis }) {
         <Kpi accent label="2025 gross income" value={money(k.apolloGross)} note={`${money(k.apolloGross / 12)} per month average`} />
         <Kpi label="2024 property tax" value={money(k.apolloTaxes)} note={`${pct((k.apolloTaxes / k.apolloGross) * 100)} of gross`} warn />
         <Kpi accent label="Net after tax" value={money(k.apolloNet)} />
-        <Kpi label="Lots billed" value={num(k.apolloLots)} note={`${k.apolloParkingSpaces} parking spaces, no rent listed`} />
-        <Kpi label="Currently billed monthly" value={money(k.apolloMonthlyBilled)} note={`${money(k.apolloAnnualisedCurrent)} annualised`} />
+        <Kpi label="Lots billed" value={num(k.apolloLots)} note={`plus ${k.apolloParkingSpaces} tandem parking spaces`} />
+        <Kpi label="Currently billed monthly" value={money(k.apolloMonthlyBilled)}
+          note={`${money(k.apolloLotMonthly)} lots + ${money(k.apolloParkingMonthly)} parking · ${money(k.apolloAnnualisedCurrent)} annualised`} />
+        <Kpi label="Parking income" value={money(k.apolloParkingMonthly)}
+          note={`${k.apolloParkingSpaces} spaces at ${money(APOLLO_PARKING_RENT)} · ${money(k.apolloParkingMonthly * 12)} a year`} />
         <Kpi label="Average lot" value={money(k.apolloAvgLotRent)} note={`Median ${money(k.apolloMedianLotRent)}`} />
         <Kpi label="Range" value={`${money(k.apolloMinLotRent)} – ${money(k.apolloMaxLotRent)}`} small
           note="Lowest to highest lot" />
@@ -75,17 +81,15 @@ export function Apollo({ k }: { k: PortfolioKpis }) {
                 <p className="page-sub" style={{ margin: 0 }}>{APOLLO_FLAG_NOTE}</p>
               </div>
               <div>
-                <div className="t-strong" style={{ marginBottom: 3 }}>The two parking spaces</div>
-                <p className="page-sub" style={{ margin: 0 }}>
-                  4211 and 4209 Apollo Lane are listed as tandem parking with no amount beside them. If they
-                  are rented, that income is not being captured anywhere.
-                </p>
+                <div className="t-strong" style={{ marginBottom: 3 }}>Three parking spaces need a lot number</div>
+                <p className="page-sub" style={{ margin: 0 }}>{APOLLO_PARKING_NOTE}</p>
               </div>
               <div>
                 <div className="t-strong" style={{ marginBottom: 3 }}>Roster against 2025</div>
                 <p className="page-sub" style={{ margin: 0 }}>
                   Today's roster bills {money(k.apolloMonthlyBilled)} a month — {money(k.apolloAnnualisedCurrent)} a
-                  year, against {money(k.apolloGross)} collected in 2025. The gap is roughly a year of rent increases.
+                  year, against {money(k.apolloGross)} collected in 2025. Most of that gap is a year of rent
+                  increases; part of it may be the parking, which the 2025 sheet may never have counted.
                 </p>
               </div>
             </div>

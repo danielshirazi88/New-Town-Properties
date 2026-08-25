@@ -1,7 +1,7 @@
 # New Town Properties — Portfolio OS
 
 A bird's-eye operating system for the New Town Properties portfolio: 14 holdings,
-52 commercial units and 37 mobile-home lots, with the rent roll, lease calendar,
+52 commercial units, 37 mobile-home lots and 5 tandem parking spaces, with the rent roll, lease calendar,
 escalations, expense ledger and valuation model in one place.
 
 Built from the **2025 rent roll workbook** (8 scanned pages) and the **Apollo Mobile
@@ -28,7 +28,7 @@ There is no server and no database.
 | **Rent roll** | Every tenant in the portfolio — the 52 commercial suites and the 37 Apollo lots, filterable by segment. Exports to CSV |
 | **Lease expirations** | Sorted by urgency, from already-lapsed through to beyond a year |
 | **Annual bumps** | Contracted escalation against what the rent actually did |
-| **Apollo park** | The trailer park — 37 lots, water recovery, base rent, full registry (also reachable from Properties) |
+| **Apollo park** | The trailer park — 37 lots plus 5 parking spaces, water recovery, base rent, full registry (also reachable from Properties) |
 | **Expenses** | Manual entry by property and category, with receipt/invoice upload |
 | **Valuation** | NOI and implied value across cap rates, on adjustable assumptions |
 | **Data integrity** | Reconciliation against the printed totals, and what the source documents don't contain |
@@ -112,6 +112,10 @@ These are the gaps, in rough order of how much they'd improve the picture:
 - **Cap rate or appraised value** — nothing in the documents implies what these are worth
 - **Apollo month-by-month** — only an annual total exists for 2025, so the dashboard chart
   spreads it evenly rather than showing a measured pattern
+- **Three of the five parking spaces have no lot number** — the registry names only 4211 and
+  4209 Apollo Lane, and gives no rent for either; the count and the $100 rate came from the owner
+- **Whether the 2025 Apollo gross includes parking** — $500 a month is $6,000 a year, and the
+  sheet's single annual figure gives no way to tell if it is already in there
 
 ---
 

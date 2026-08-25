@@ -54,8 +54,15 @@ export const APOLLO_TENANTS: ApolloTenant[] = [
   { id: 'ap-valdovinos', name: 'Valdovinos, Gloria', address: '4214 Apollo', amountDue: 870, flagged: false, contacts: [{ phone: '708-506-5292' }] },
   { id: 'ap-weir', name: 'Weir, George', address: '1426 42nd Court', amountDue: 725, flagged: false, contacts: [{ phone: '630-240-1734' }] },
   { id: 'ap-zavala', name: 'Zavala, Jose', address: '1423 N 43rd Ave', amountDue: 900, flagged: false, contacts: [{ name: 'Jose', phone: '773-691-3817' }, { phone: '773-691-5252', label: 'M' }] },
-  { id: 'ap-parking-4211', name: 'Tandem parking', address: '4211 Apollo Lane', amountDue: 0, flagged: false, isParking: true, contacts: [] },
-  { id: 'ap-parking-4209', name: 'Tandem parking', address: '4209 Apollo Lane', amountDue: 0, flagged: false, isParking: true, contacts: [] },
+  // Five tandem parking spaces at $100 a month each, per the owner. The July 2026
+  // registry lists only two of them and shows no amount against either, so the
+  // count and the rate both come from the owner rather than the document.
+  // Parking carries no water charge — that $75 applies to dwelling lots only.
+  { id: 'ap-parking-4211', name: 'Tandem parking', address: '4211 Apollo Lane', amountDue: 100, flagged: false, isParking: true, contacts: [] },
+  { id: 'ap-parking-4209', name: 'Tandem parking', address: '4209 Apollo Lane', amountDue: 100, flagged: false, isParking: true, contacts: [] },
+  { id: 'ap-parking-3', name: 'Tandem parking', address: 'Lot not identified on registry', amountDue: 100, flagged: true, isParking: true, contacts: [] },
+  { id: 'ap-parking-4', name: 'Tandem parking', address: 'Lot not identified on registry', amountDue: 100, flagged: true, isParking: true, contacts: [] },
+  { id: 'ap-parking-5', name: 'Tandem parking', address: 'Lot not identified on registry', amountDue: 100, flagged: true, isParking: true, contacts: [] },
 ]
 
 /**
@@ -64,3 +71,9 @@ export const APOLLO_TENANTS: ApolloTenant[] = [
  */
 export const APOLLO_FLAG_NOTE =
   'Four names carry an asterisk on the registry (Gonzalez, Gomez, Jimenez, Mejia). The registry does not say what it denotes.'
+
+/** Monthly rent per tandem parking space. Owner-supplied; not on the registry. */
+export const APOLLO_PARKING_RENT = 100
+
+export const APOLLO_PARKING_NOTE =
+  'Five tandem spaces at $100 a month, confirmed by the owner. The registry names only two of them (4211 and 4209 Apollo Lane) and gives no amount for either, so three spaces still need their lot identified. Whether the $500 a month is already inside the 2025 Apollo gross of $378,870 is not determinable from the sheet.'

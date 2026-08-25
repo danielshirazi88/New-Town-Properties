@@ -101,6 +101,10 @@ export interface PortfolioKpis {
   // ── Apollo ───────────────────────────────────────────────────────────────
   apolloLots: number
   apolloParkingSpaces: number
+  /** Dwelling lots only — parking is billed separately and carries no water. */
+  apolloLotMonthly: number
+  apolloParkingMonthly: number
+  /** Lots plus parking. */
   apolloMonthlyBilled: number
   apolloAnnualisedCurrent: number
   apolloAvgLotRent: number
@@ -196,9 +200,16 @@ export function computeKpis(asOf: Date = AS_OF): PortfolioKpis {
   const leaseTypeCounts: Record<string, number> = {}
   for (const l of commercialLeases) leaseTypeCounts[l.leaseType] = (leaseTypeCounts[l.leaseType] ?? 0) + 1
 
+  // Dwelling lots and parking spaces are priced on completely different scales
+  // ($650–$1,320 against a flat $100), so the lot averages are computed over
+  // dwelling lots alone — folding parking in would drag "cheapest lot" to $100
+  // and describe a lot nobody lives on.
   const paying = APOLLO_TENANTS.filter((t) => !t.isParking)
+  const parking = APOLLO_TENANTS.filter((t) => t.isParking)
   const lotRents = paying.map((t) => t.amountDue)
-  const apolloMonthlyBilled = lotRents.reduce((a, b) => a + b, 0)
+  const apolloLotMonthly = lotRents.reduce((a, b) => a + b, 0)
+  const apolloParkingMonthly = parking.reduce((a, t) => a + t.amountDue, 0)
+  const apolloMonthlyBilled = apolloLotMonthly + apolloParkingMonthly
 
   const byTaxLoad = [...commercialProps].sort((a, b) => b.taxLoadPct - a.taxLoadPct)
 
@@ -276,15 +287,17 @@ export function computeKpis(asOf: Date = AS_OF): PortfolioKpis {
       .reduce((a, l) => a + collected(l), 0),
 
     apolloLots: paying.length,
-    apolloParkingSpaces: APOLLO_TENANTS.length - paying.length,
+    apolloParkingSpaces: parking.length,
+    apolloLotMonthly,
+    apolloParkingMonthly,
     apolloMonthlyBilled,
     apolloAnnualisedCurrent: apolloMonthlyBilled * 12,
-    apolloAvgLotRent: apolloMonthlyBilled / paying.length,
+    apolloAvgLotRent: apolloLotMonthly / paying.length,
     apolloMedianLotRent: median(lotRents),
     apolloMinLotRent: Math.min(...lotRents),
     apolloMaxLotRent: Math.max(...lotRents),
     apolloWaterRevenueMonthly: paying.length * APOLLO_WATER_CHARGE,
-    apolloBaseRentMonthly: apolloMonthlyBilled - paying.length * APOLLO_WATER_CHARGE,
+    apolloBaseRentMonthly: apolloLotMonthly - paying.length * APOLLO_WATER_CHARGE,
     apolloFlaggedCount: APOLLO_TENANTS.filter((t) => t.flagged).length,
 
     properties: props,

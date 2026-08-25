@@ -144,21 +144,39 @@ describe('lease term', () => {
 })
 
 describe('Apollo', () => {
-  it('bills 37 lots plus two parking spaces', () => {
-    const paying = APOLLO_TENANTS.filter((t) => !t.isParking)
-    expect(paying).toHaveLength(37)
-    expect(APOLLO_TENANTS.filter((t) => t.isParking)).toHaveLength(2)
+  it('bills 37 dwelling lots plus five parking spaces', () => {
+    expect(APOLLO_TENANTS.filter((t) => !t.isParking)).toHaveLength(37)
+    expect(APOLLO_TENANTS.filter((t) => t.isParking)).toHaveLength(5)
   })
 
-  it('sums the July 2026 registry to $32,600 a month', () => {
-    const total = APOLLO_TENANTS.reduce((a, t) => a + t.amountDue, 0)
-    expect(total).toBe(32600)
+  it('sums the July 2026 lot registry to $32,600 a month', () => {
+    const lots = APOLLO_TENANTS.filter((t) => !t.isParking).reduce((a, t) => a + t.amountDue, 0)
+    expect(lots).toBe(32600)
   })
 
-  it('separates the water charge from base rent', () => {
+  it('bills parking at $100 a space, $500 a month in total', () => {
+    const parking = APOLLO_TENANTS.filter((t) => t.isParking)
+    for (const space of parking) expect(space.amountDue).toBe(100)
+    const k = computeKpis()
+    expect(k.apolloParkingMonthly).toBe(500)
+    expect(k.apolloMonthlyBilled).toBe(33100)
+    expect(k.apolloAnnualisedCurrent).toBe(397200)
+  })
+
+  it('charges water on dwelling lots only, never on parking', () => {
     const k = computeKpis()
     expect(k.apolloWaterRevenueMonthly).toBe(37 * APOLLO_WATER_CHARGE)
-    expect(k.apolloBaseRentMonthly + k.apolloWaterRevenueMonthly).toBeCloseTo(k.apolloMonthlyBilled, 2)
+    // Base + water reconstructs the LOT bill; parking sits outside both.
+    expect(k.apolloBaseRentMonthly + k.apolloWaterRevenueMonthly).toBeCloseTo(k.apolloLotMonthly, 2)
+    expect(k.apolloLotMonthly + k.apolloParkingMonthly).toBeCloseTo(k.apolloMonthlyBilled, 2)
+  })
+
+  it('keeps parking out of the lot averages', () => {
+    const k = computeKpis()
+    // A $100 space must not become "the cheapest lot".
+    expect(k.apolloMinLotRent).toBe(650)
+    expect(k.apolloMaxLotRent).toBe(1320)
+    expect(k.apolloAvgLotRent).toBeCloseTo(32600 / 37, 2)
   })
 })
 
