@@ -225,7 +225,39 @@ export function expensesToCsv(expenses: Expense[], propertyName: (id: string) =>
   return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\n')
 }
 
-export function download(filename: string, content: string, mime = 'text/csv'): void {
+interface Saver {
+  save(request: { filename: string; data: string }): Promise<unknown>
+}
+
+declare global {
+  interface Window {
+    claude?: { use?: (name: string) => Promise<unknown> }
+  }
+}
+
+let saverPromise: Promise<Saver | null> | undefined
+
+/**
+ * When the page is running as a published Artifact, the viewer sandbox blocks a
+ * plain anchor download; files have to go through the host's save prompt instead.
+ * Resolve that namespace once if it exists, and fall back to the anchor everywhere
+ * else (local dev, a normal static host, an opened file).
+ */
+function getSaver(): Promise<Saver | null> {
+  const use = window.claude?.use
+  if (!use) return Promise.resolve(null)
+  if (!saverPromise) {
+    saverPromise = Promise.resolve(use('downloads'))
+      .then((ns) => {
+        const s = ns as Saver | null
+        return s && typeof s.save === 'function' ? s : null
+      })
+      .catch(() => null)
+  }
+  return saverPromise
+}
+
+function anchorDownload(filename: string, content: string, mime: string): void {
   const blob = new Blob([content], { type: `${mime};charset=utf-8` })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -235,4 +267,34 @@ export function download(filename: string, content: string, mime = 'text/csv'): 
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export async function download(filename: string, content: string, mime = 'text/csv'): Promise<void> {
+  const saver = await getSaver()
+  if (!saver) {
+    anchorDownload(filename, content, mime)
+    return
+  }
+
+  const code = (err: unknown): string =>
+    typeof err === 'object' && err !== null && 'code' in err ? String((err as { code: unknown }).code) : ''
+
+  try {
+    await saver.save({ filename, data: content })
+    return
+  } catch (err) {
+    const c = code(err)
+    // The viewer said no — that is an answer, not a failure to route around.
+    if (c === 'declined' || c === 'rate_limited') return
+    // .csv is not enabled for every viewer; the same text saves fine as .txt.
+    if (c === 'extension_not_enabled' || c === 'rejected_extension') {
+      try {
+        await saver.save({ filename: filename.replace(/\.csv$/i, '.txt'), data: content })
+        return
+      } catch (retryErr) {
+        if (code(retryErr) === 'declined') return
+      }
+    }
+  }
+  anchorDownload(filename, content, mime)
 }
