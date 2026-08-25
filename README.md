@@ -77,6 +77,16 @@ it moves both the NOI and the valuation.
 
 ---
 
+## Running it as a shared platform
+
+By default everything typed into the app is stored in the browser it was typed
+in. To have several people work from the same numbers — which is the point once
+more than one person is entering expenses — point it at a database and host the
+build. That's a config file and about fifteen minutes of setup:
+**[docs/HOSTING.md](docs/HOSTING.md)**.
+
+The sidebar always says which mode is active, so there is no guessing.
+
 ## Adding your own data
 
 **Expenses** are entered in the app: pick the property from the dropdown, choose a category
@@ -90,7 +100,13 @@ Nothing is uploaded anywhere — there is no server. That also means the data is
 and per-machine, so **export to CSV regularly** if it matters. Both the expense ledger and
 the rent roll have an Export CSV button.
 
-**Rent roll changes** go in `src/data/leases.ts`. Each lease carries twelve month cells
+**Rent roll corrections** are made in the app: the Rent roll tab has an Edit button on
+every line for rent, dates, annual bump, lease type and square footage. Edits are stored
+as patches over the source documents rather than replacing them, so the original figure
+from the workbook is never lost, every edited line is badged, and any change can be
+reverted. The person's name and an optional reason are recorded with each one.
+
+**Bulk or structural changes** still go in `src/data/leases.ts`. Each lease carries twelve month cells
 (a number, `'V'` for vacant or `'FREE'` for a concession) plus the annual total printed on
 the sheet. The test suite checks the two against each other, so a mistyped month fails the
 build rather than quietly changing the dashboard.

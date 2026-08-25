@@ -2,6 +2,11 @@ import { APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../data/apollo'
 import { LEASES } from '../data/leases'
 import { PROPERTIES } from '../data/properties'
 import {
+  applyApolloOverrides, applyLeaseOverrides, applyPropertyOverrides,
+  EMPTY_OVERRIDES, type Overrides,
+} from './overrides'
+import type { ApolloTenant, Property } from './types'
+import {
   AS_OF, collected, concessionLoss, darkMonths, exitRate, grossPotential, hasNoEndDate,
   herfindahl, isExpired, isFullyVacant, isHoldover, monthlySeries, monthsRemaining,
   propertyMetrics, realisedEscalationPct, vacancyLoss, valueAtCap, walt, waltActiveOnly,
@@ -52,6 +57,8 @@ export interface PortfolioKpis {
 
   // ── Portfolio shape ──────────────────────────────────────────────────────
   propertyCount: number
+  /** Holdings on the tax return but absent from the 2025 rent roll. */
+  offRentRollCount: number
   commercialPropertyCount: number
   unitCount: number
   occupiedUnits: number
@@ -125,15 +132,36 @@ const median = (xs: number[]): number => {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2
 }
 
-export function computeKpis(asOf: Date = AS_OF): PortfolioKpis {
-  const commercialLeases = LEASES
+/** The dataset the whole app reads: source documents with hand edits applied. */
+export interface ResolvedData {
+  properties: Property[]
+  leases: Lease[]
+  apolloTenants: ApolloTenant[]
+}
+
+export function resolveData(overrides: Overrides = EMPTY_OVERRIDES): ResolvedData {
+  return {
+    properties: applyPropertyOverrides(PROPERTIES, overrides),
+    leases: applyLeaseOverrides(LEASES, overrides),
+    apolloTenants: applyApolloOverrides(APOLLO_TENANTS, overrides),
+  }
+}
+
+export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData()): PortfolioKpis {
+  const { properties: PROPS, leases: ALL_LEASES, apolloTenants: APOLLO } = data
+  const commercialLeases = ALL_LEASES
   const commercialGross = commercialLeases.reduce((a, l) => a + collected(l), 0)
-  const apolloProp = PROPERTIES.find((p) => p.id === 'apollo')!
+  const apolloProp = PROPS.find((p) => p.id === 'apollo')!
   const apolloGross = apolloProp.statedGross
   const grossCollected = commercialGross + apolloGross
 
-  const props = PROPERTIES.map((p) => propertyMetrics(p, LEASES, grossCollected, asOf))
-  const commercialProps = props.filter((p) => p.property.id !== 'apollo')
+  const props = PROPS.map((p) => propertyMetrics(p, ALL_LEASES, grossCollected, asOf))
+  // Reconciliation covers only what the 2025 rent-roll workbook covers. A holding
+  // that exists solely on the tax return is browsable and taxable but is not part
+  // of the figure that is claimed to tie to that document.
+  const commercialProps = props.filter(
+    (p) => p.property.id !== 'apollo' && p.property.onRentRoll !== false,
+  )
 
   const monthly = monthlySeries(commercialLeases)
   const apolloPerMonth = apolloGross / 12
@@ -204,8 +232,8 @@ export function computeKpis(asOf: Date = AS_OF): PortfolioKpis {
   // ($650–$1,320 against a flat $100), so the lot averages are computed over
   // dwelling lots alone — folding parking in would drag "cheapest lot" to $100
   // and describe a lot nobody lives on.
-  const paying = APOLLO_TENANTS.filter((t) => !t.isParking)
-  const parking = APOLLO_TENANTS.filter((t) => t.isParking)
+  const paying = APOLLO.filter((t) => !t.isParking)
+  const parking = APOLLO.filter((t) => t.isParking)
   const lotRents = paying.map((t) => t.amountDue)
   const apolloLotMonthly = lotRents.reduce((a, b) => a + b, 0)
   const apolloParkingMonthly = parking.reduce((a, t) => a + t.amountDue, 0)
@@ -242,7 +270,8 @@ export function computeKpis(asOf: Date = AS_OF): PortfolioKpis {
     forwardRunRate,
     runRateVsActualPct: grossCollected > 0 ? ((forwardRunRate - grossCollected) / grossCollected) * 100 : 0,
 
-    propertyCount: PROPERTIES.length,
+    propertyCount: PROPS.length,
+    offRentRollCount: PROPS.filter((p) => p.onRentRoll === false).length,
     commercialPropertyCount: commercialProps.length,
     unitCount: commercialLeases.length,
     occupiedUnits: commercialLeases.filter((l) => !isFullyVacant(l)).length,
@@ -298,7 +327,7 @@ export function computeKpis(asOf: Date = AS_OF): PortfolioKpis {
     apolloMaxLotRent: Math.max(...lotRents),
     apolloWaterRevenueMonthly: paying.length * APOLLO_WATER_CHARGE,
     apolloBaseRentMonthly: apolloLotMonthly - paying.length * APOLLO_WATER_CHARGE,
-    apolloFlaggedCount: APOLLO_TENANTS.filter((t) => t.flagged).length,
+    apolloFlaggedCount: APOLLO.filter((t) => t.flagged).length,
 
     properties: props,
   }

@@ -9,6 +9,9 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Optional: present only when the app is pointed at a shared backend.
+         Missing file is fine — the app falls back to this browser's storage. -->
+    <script src="./config.js" onerror="void 0"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -4,9 +4,12 @@ import { cellAmount, collected, darkMonths, isDark, realisedEscalationPct, tenan
 import { dateLabel, money, num, signedPct } from '../lib/format'
 import { download } from '../lib/expenses'
 import { ApolloRoll } from '../components/ApolloRoll'
-import { APOLLO_REGISTRY_LABEL, APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../data/apollo'
+import { APOLLO_REGISTRY_LABEL, APOLLO_WATER_CHARGE } from '../data/apollo'
+import { EditLease } from '../components/EditLease'
+import { changedFields, type Overrides } from '../lib/overrides'
+import type { ApolloTenant } from '../lib/types'
 import type { PortfolioKpis } from '../lib/portfolio'
-import type { ApolloTenant, Lease } from '../lib/types'
+import type { Lease } from '../lib/types'
 
 type SortKey = 'tenant' | 'property' | 'rent' | 'end' | 'bump' | 'tenure'
 
@@ -18,7 +21,17 @@ type SortKey = 'tenant' | 'property' | 'rent' | 'end' | 'bump' | 'tenure'
  */
 type Segment = 'all' | 'commercial' | 'apollo'
 
-export function RentRoll({ k, onProperty }: { k: PortfolioKpis; onProperty: (id: string) => void }) {
+export function RentRoll({
+  k, onProperty, apolloTenants: APOLLO_TENANTS, overrides, setOverrides, originalLeases,
+}: {
+  k: PortfolioKpis
+  onProperty: (id: string) => void
+  apolloTenants: ApolloTenant[]
+  overrides: Overrides
+  setOverrides: (next: Overrides) => void
+  originalLeases: Lease[]
+}) {
+  const [editing, setEditing] = useState<Lease | null>(null)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortKey>('rent')
   const [asc, setAsc] = useState(false)
@@ -150,6 +163,7 @@ export function RentRoll({ k, onProperty }: { k: PortfolioKpis; onProperty: (id:
                   {head('rent', '2025 rent', true)}
                   <th className="num">Monthly</th>
                   <th>Contacts</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -157,6 +171,7 @@ export function RentRoll({ k, onProperty }: { k: PortfolioKpis; onProperty: (id:
                   const realised = realisedEscalationPct(l)
                   const years = tenancyYears(l)
                   const dark = darkMonths(l)
+                  const edited = changedFields(overrides.leases[l.id])
                   return (
                     <tr key={l.id} className="clickable" onClick={() => onProperty(l.propertyId)}>
                       <td>
@@ -186,6 +201,12 @@ export function RentRoll({ k, onProperty }: { k: PortfolioKpis; onProperty: (id:
                           <div key={i} className="t-nowrap">{c.name ? `${c.name} · ` : ''}{c.phone}</div>
                         ))}
                       </td>
+                      <td className="t-nowrap" onClick={(e) => e.stopPropagation()}>
+                        {edited.length > 0 && (
+                          <span className="badge warn" title={`Edited: ${edited.join(', ')}`}>edited</span>
+                        )}
+                        <button className="btn ghost sm" onClick={() => setEditing(l)}>Edit</button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -195,6 +216,7 @@ export function RentRoll({ k, onProperty }: { k: PortfolioKpis; onProperty: (id:
                   <td className="label" colSpan={8}>{rows.length} tenants</td>
                   <td className="num">{money(totalRent)}</td>
                   <td className="num">{money(rows.reduce((a, l) => a + currentMonthly(l), 0))}</td>
+                  <td />
                   <td />
                 </tr>
               </tfoot>
@@ -239,6 +261,16 @@ export function RentRoll({ k, onProperty }: { k: PortfolioKpis; onProperty: (id:
           </div>
         </Card>
       </div>
+
+      {editing && (
+        <EditLease
+          lease={editing}
+          original={originalLeases.find((l) => l.id === editing.id) ?? editing}
+          overrides={overrides}
+          setOverrides={setOverrides}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </>
   )
 }

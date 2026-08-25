@@ -3,20 +3,21 @@ import { Card, Kpi } from '../components/ui'
 import { money, num, pct } from '../lib/format'
 import {
   APOLLO_FLAG_NOTE, APOLLO_PARKING_NOTE, APOLLO_PARKING_RENT, APOLLO_REGISTRY_LABEL,
-  APOLLO_TENANTS, APOLLO_WATER_CHARGE,
+  APOLLO_WATER_CHARGE,
 } from '../data/apollo'
+import type { ApolloTenant } from '../lib/types'
 import type { PortfolioKpis } from '../lib/portfolio'
 
-export function Apollo({ k }: { k: PortfolioKpis }) {
+export function Apollo({ k, tenants: APOLLO }: { k: PortfolioKpis; tenants: ApolloTenant[] }) {
   const [query, setQuery] = useState('')
-  const paying = APOLLO_TENANTS.filter((t) => !t.isParking)
+  const paying = APOLLO.filter((t) => !t.isParking)
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return APOLLO_TENANTS
+    return APOLLO
       .filter((t) => !q || t.name.toLowerCase().includes(q) || t.address.toLowerCase().includes(q) || t.contacts.some((c) => c.phone.includes(q)))
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [query])
+  }, [query, APOLLO])
 
   // Rent bands, for a quick read on where the lots sit.
   const bands = [

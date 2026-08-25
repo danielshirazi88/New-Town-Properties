@@ -74,8 +74,15 @@ export interface Property {
   statedGross: number
   /** Gross minus taxes, as computed on the source sheet. */
   statedNetAfterTax: number
-  /** Sheet page the property was transcribed from. */
+  /** Sheet page the property was transcribed from. 0 when it is not on the sheet. */
   sourcePage: number
+  /**
+   * False for a holding that appears on the tax return but not in the 2025 rent
+   * roll. Such a property is still shown and still belongs on Schedule E, but it
+   * is kept out of the totals that reconcile against the rent-roll workbook —
+   * otherwise those figures would stop matching the document they came from.
+   */
+  onRentRoll?: boolean
   notes?: string
 }
 
