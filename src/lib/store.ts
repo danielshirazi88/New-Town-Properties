@@ -66,104 +66,131 @@ export class LocalAdapter implements StoreAdapter {
 }
 
 /**
- * Shared storage over a REST backend, so Chicago and Miami read and write the
- * same records. Activated by setting `window.NTP_BACKEND` before the app boots:
+ * Shared storage over this application's own API.
  *
- *   window.NTP_BACKEND = { url: 'https://…', key: '…' }
- *
- * The shape is deliberately plain REST — one table of `{ key, value, updated_at }`
- * rows — so it can sit on Supabase, a small Express server, or anything else that
- * speaks JSON, without the app caring which.
+ * When the front-end is served by the Node server it talks to `/api/state/...`
+ * on the same origin, so there is no key embedded in the page, no CORS, and the
+ * database credentials stay on the server where they belong. The adapter is
+ * chosen at boot by asking the server whether it is there.
  */
-export interface BackendConfig {
-  url: string
-  key: string
-  /** Seconds between polls for changes made elsewhere. */
-  pollSeconds?: number
-}
-
-export class RemoteAdapter implements StoreAdapter {
+export class ApiAdapter implements StoreAdapter {
   readonly kind = 'remote' as const
-  readonly label: string
-  private timers = new Map<string, number>()
+  readonly label = 'Shared — everyone sees these numbers'
+  private pollSeconds: number
 
-  constructor(private config: BackendConfig) {
-    this.label = `Shared — ${new URL(config.url).host}`
-  }
-
-  private headers(): Record<string, string> {
-    return {
-      'Content-Type': 'application/json',
-      apikey: this.config.key,
-      Authorization: `Bearer ${this.config.key}`,
-      Prefer: 'resolution=merge-duplicates',
-    }
+  constructor(pollSeconds = 15) {
+    this.pollSeconds = pollSeconds
   }
 
   async get<T>(key: string): Promise<T | null> {
     try {
-      const res = await fetch(
-        `${this.config.url}/rest/v1/app_state?key=eq.${encodeURIComponent(key)}&select=value`,
-        { headers: this.headers() },
-      )
+      const res = await fetch(`/api/state/${encodeURIComponent(key)}`, { credentials: 'same-origin' })
+      if (res.status === 401) {
+        window.dispatchEvent(new CustomEvent('ntp:unauthenticated'))
+        return null
+      }
       if (!res.ok) return null
-      const rows = (await res.json()) as { value: T }[]
-      return rows.length ? rows[0].value : null
+      const body = (await res.json()) as { value: T | null }
+      return body.value
     } catch {
       return null
     }
   }
 
   async set<T>(key: string, value: T): Promise<void> {
-    try {
-      const res = await fetch(`${this.config.url}/rest/v1/app_state`, {
-        method: 'POST',
-        headers: this.headers(),
-        body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
-      })
-      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
-    } catch (err) {
-      console.error('Could not save to the shared backend', key, err)
-      throw err
+    const res = await fetch(`/api/state/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value, by: localStorage.getItem('ntp.editor') ?? undefined }),
+    })
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent('ntp:unauthenticated'))
+      throw new Error('Please sign in again')
     }
+    if (!res.ok) throw new Error(`Could not save (${res.status})`)
   }
 
   subscribe<T>(key: string, onChange: (value: T) => void): () => void {
-    const period = (this.config.pollSeconds ?? 20) * 1000
-    let last = ''
+    // `null` means "we have not looked yet", which is different from "we looked
+    // and there was nothing there". Conflating the two loses the very first
+    // write: a browser opened before anyone had saved anything would treat the
+    // arrival of real data as its baseline and never report it.
+    let last: string | null = null
+    let stopped = false
+
     const tick = async () => {
+      if (stopped) return
       const value = await this.get<T>(key)
-      if (value === null) return
-      const serialised = JSON.stringify(value)
-      if (serialised !== last) {
-        last = serialised
-        onChange(value)
-      }
+      const serialised = value === null ? '' : JSON.stringify(value)
+      if (last !== null && value !== null && serialised !== last) onChange(value)
+      last = serialised
     }
+
     void tick()
-    const id = window.setInterval(tick, period)
-    this.timers.set(key, id)
+    const id = window.setInterval(tick, this.pollSeconds * 1000)
+    // Catch up straight away when someone comes back to the tab, rather than
+    // making them wait out the remainder of the interval.
+    const onVisible = () => { if (!document.hidden) void tick() }
+    document.addEventListener('visibilitychange', onVisible)
+
     return () => {
+      stopped = true
       window.clearInterval(id)
-      this.timers.delete(key)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }
 }
 
-declare global {
-  interface Window {
-    NTP_BACKEND?: BackendConfig
-  }
+let adapter: StoreAdapter = new LocalAdapter()
+
+export interface ServerInfo {
+  present: boolean
+  authRequired: boolean
+  authenticated: boolean
+  name: string | null
 }
 
-let adapter: StoreAdapter | undefined
+let serverInfo: ServerInfo = { present: false, authRequired: false, authenticated: false, name: null }
 
-/** The adapter in use. Remote when configured, browser storage otherwise. */
-export function store(): StoreAdapter {
-  if (!adapter) {
-    const cfg = window.NTP_BACKEND
-    adapter = cfg?.url && cfg?.key ? new RemoteAdapter(cfg) : new LocalAdapter()
+/**
+ * Ask the server whether it is there before the app renders. If it answers, the
+ * app runs shared; if not — opened as a file, or served as a static bundle — it
+ * falls back to this browser's own storage and still works.
+ */
+export async function initStore(): Promise<ServerInfo> {
+  try {
+    const res = await fetch('/api/session', { credentials: 'same-origin' })
+    if (res.ok) {
+      const body = (await res.json()) as Omit<ServerInfo, 'present'>
+      serverInfo = { present: true, ...body }
+      if (body.authenticated) adapter = new ApiAdapter()
+      return serverInfo
+    }
+  } catch {
+    // No server here — browser storage it is.
   }
+  return serverInfo
+}
+
+/**
+ * Called after a successful sign-in to switch storage over without a reload.
+ *
+ * Anything already subscribed is listening to the old adapter, so this
+ * announces the swap and `useStored` re-establishes against the new one.
+ * Without that, the app signs in and then quietly keeps reading the browser's
+ * own storage.
+ */
+export function activateSharedStore(name: string | null): void {
+  adapter = new ApiAdapter()
+  serverInfo = { ...serverInfo, authenticated: true, name }
+  window.dispatchEvent(new CustomEvent('ntp:store-changed'))
+}
+
+export const server = (): ServerInfo => serverInfo
+
+/** The adapter in use: the shared API when available, browser storage otherwise. */
+export function store(): StoreAdapter {
   return adapter
 }
 

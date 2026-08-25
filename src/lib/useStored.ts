@@ -18,10 +18,19 @@ export function useStored<T>(key: string, initial: T): {
   error: string | null
 } {
   const [value, setInner] = useState<T>(initial)
+  // Bumped when the underlying adapter is swapped (browser storage -> shared),
+  // which forces the load and subscription below to run again against it.
+  const [generation, setGeneration] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const lastLocalWrite = useRef(0)
+
+  useEffect(() => {
+    const onSwap = () => setGeneration((g) => g + 1)
+    window.addEventListener('ntp:store-changed', onSwap)
+    return () => window.removeEventListener('ntp:store-changed', onSwap)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -42,7 +51,7 @@ export function useStored<T>(key: string, initial: T): {
       alive = false
       unsubscribe()
     }
-  }, [key])
+  }, [key, generation])
 
   const setValue = useCallback(
     (next: T) => {

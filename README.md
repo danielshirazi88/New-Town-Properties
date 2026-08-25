@@ -11,7 +11,7 @@ Home Court tenant registry (July 2026)**.
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # static bundle in dist/
-npm test         # 25 tests locking the figures to the source documents
+npm test         # 33 tests: figures locked to the source documents, plus storage round-trips
 ```
 
 The build is a plain static site — `dist/` can be opened from disk or hosted anywhere.
@@ -79,13 +79,19 @@ it moves both the NOI and the valuation.
 
 ## Running it as a shared platform
 
-By default everything typed into the app is stored in the browser it was typed
-in. To have several people work from the same numbers — which is the point once
-more than one person is entering expenses — point it at a database and host the
-build. That's a config file and about fifteen minutes of setup:
-**[docs/HOSTING.md](docs/HOSTING.md)**.
+The app runs two ways, and the sidebar always says which:
 
-The sidebar always says which mode is active, so there is no guessing.
+- **This browser only** — no server. Everything typed stays on that machine.
+- **Shared** — a Node server and Postgres behind it, so everyone sees the same
+  numbers and edits show up within about fifteen seconds.
+
+Shared mode is a Railway deploy from this repo: one service, one database, two
+environment variables. See **[docs/HOSTING.md](docs/HOSTING.md)**.
+
+```bash
+npm run build
+DATABASE_URL=postgresql://localhost/ntp APP_PASSWORD=secret npm start
+```
 
 ## Adding your own data
 

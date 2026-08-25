@@ -14,7 +14,8 @@ import { money } from './lib/format'
 import { Taxes } from './views/Taxes'
 import { EMPTY_OVERRIDES, editCount, type Overrides } from './lib/overrides'
 import { useStored } from './lib/useStored'
-import { STORE_KEYS, store } from './lib/store'
+import { STORE_KEYS, server, store } from './lib/store'
+import { SignIn } from './components/SignIn'
 import type { TaxEntries } from './lib/taxes'
 import { LEASES } from './data/leases'
 
@@ -23,6 +24,8 @@ type Tab =
   | 'escalations' | 'expenses' | 'taxes' | 'valuation' | 'apollo' | 'integrity'
 
 export default function App() {
+  const info = server()
+  const [signedIn, setSignedIn] = useState(!info.authRequired || info.authenticated)
   const [tab, setTab] = useState<Tab>('dashboard')
   const [selectedProperty, setSelectedProperty] = useState<string | undefined>()
   const [expenseSeed, setExpenseSeed] = useState<string | undefined>()
@@ -45,6 +48,16 @@ export default function App() {
   useEffect(() => {
     window.scrollTo({ top: 0 })
   }, [tab, selectedProperty])
+
+  // The server rejects a request once the session lapses; show the gate again
+  // rather than letting saves fail silently.
+  useEffect(() => {
+    const onExpired = () => setSignedIn(false)
+    window.addEventListener('ntp:unauthenticated', onExpired)
+    return () => window.removeEventListener('ntp:unauthenticated', onExpired)
+  }, [])
+
+  if (!signedIn) return <SignIn onDone={() => setSignedIn(true)} />
 
   const goProperty = (id?: string) => {
     setSelectedProperty(id)

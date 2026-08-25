@@ -3,16 +3,20 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Portfolio OS for New Town Properties — properties, tenants, leases, NOI and valuation in one place.",
+  "description": "Portfolio OS for New Town Properties \u2014 properties, tenants, leases, NOI and valuation in one place.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false || tsc -b"
+    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false || tsc -b",
+    "start": "node server/index.js",
+    "server": "node server/index.js"
   },
   "dependencies": {
+    "express": "^5.2.1",
+    "pg": "^8.23.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -24,5 +28,8 @@
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
     "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
