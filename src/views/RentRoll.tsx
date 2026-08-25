@@ -6,6 +6,7 @@ import { download } from '../lib/expenses'
 import { ApolloRoll } from '../components/ApolloRoll'
 import { APOLLO_REGISTRY_LABEL, APOLLO_WATER_CHARGE } from '../data/apollo'
 import { EditLease } from '../components/EditLease'
+import { MANNHEIM_PLAZA_RECOVERY_NOTE } from '../data/leases'
 import { changedFields, type Overrides } from '../lib/overrides'
 import type { ApolloTenant } from '../lib/types'
 import type { PortfolioKpis } from '../lib/portfolio'
@@ -242,23 +243,31 @@ export function RentRoll({
       </div>
 
       <div className="section">
-        <Card title="Lease structure" hint="modified gross throughout">
-          <p className="page-sub" style={{ marginTop: 0 }}>
-            All {k.unitCount} leases are <strong>modified gross</strong>, confirmed by the owner —
-            covering {money(k.commercialGross)} of income. Not one is triple net.
-          </p>
-          <div className="callout neutral" style={{ marginTop: 12, marginBottom: 0 }}>
-            <div className="callout-title">What that means for the numbers</div>
+        <Card title="Lease structure" hint="who carries the operating costs">
+          <div className="kpi-grid" style={{ marginBottom: 14 }}>
+            <Kpi label="Modified gross" value={num(k.leaseTypeCounts.MG ?? 0)}
+              note="Landlord carries the operating costs" />
+            <Kpi accent label="Triple net" value={num(k.leaseTypeCounts.NNN ?? 0)}
+              note="Mannheim Plaza — tenants reimburse taxes, insurance and CAM" />
+            <Kpi label="Unclassified" value={num(k.leaseTypeCounts.UNKNOWN ?? 0)}
+              note={(k.leaseTypeCounts.UNKNOWN ?? 0) === 0 ? 'All leases classified' : 'Still to confirm'} />
+          </div>
+          <div className="callout">
+            <div className="callout-title">Mannheim Plaza may be earning more than the sheet shows</div>
+            <p>{MANNHEIM_PLAZA_RECOVERY_NOTE}</p>
             <p>
-              Under modified gross the landlord carries the operating costs rather than billing them
-              back, which is exactly what the source sheets show: they reach net by subtracting the
-              property tax bill from gross rent. A triple net portfolio would pass those taxes through
-              to tenants and the same rent roll would be worth more.
+              Nothing here is adjusted on that basis — the figures are the sheet's. But it is worth
+              settling, because at an 8% cap rate the difference is roughly $1.04M of value on that
+              one property.
             </p>
+          </div>
+          <div className="callout neutral" style={{ marginBottom: 0 }}>
+            <div className="callout-title">Why the rest being modified gross matters</div>
             <p>
-              So the {money(k.totalTaxes)} tax bill is genuinely the landlord's, and so is everything
-              logged in Expenses. The valuation model charges both against NOI rather than assuming
-              any recovery — which is the conservative and, here, the correct treatment.
+              For the other {num(k.leaseTypeCounts.MG ?? 0)} leases the landlord carries the operating
+              costs rather than billing them back, which is what the source sheets show: they reach net
+              by subtracting the property tax bill from gross rent. Those taxes are genuinely yours, and
+              so is everything logged in Expenses, so the valuation charges both against NOI.
             </p>
           </div>
         </Card>

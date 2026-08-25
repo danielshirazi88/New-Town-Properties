@@ -110,7 +110,13 @@ export function Valuation({ k, expenses, onProperty }: { k: PortfolioKpis; expen
       </div>
 
       <div className="section">
-        <div className="section-title">Value by property <span className="hint">taxes and the same expense allowance applied to each</span></div>
+        <div className="section-title">
+          Value by property
+          <span className="hint">
+            taxes and the expense allowance applied to each, except the triple-net property whose
+            tenants carry their own operating costs
+          </span>
+        </div>
         <div className="table-wrap">
           <table>
             <thead>
@@ -128,14 +134,23 @@ export function Valuation({ k, expenses, onProperty }: { k: PortfolioKpis; expen
               {[...k.properties].sort((a, b) => b.collected - a.collected).map((p) => {
                 const own = expenses.filter((e) => e.propertyId === p.property.id && e.kind === 'operating')
                   .reduce((a, e) => a + e.amount, 0)
-                const opex = useLogged && own > 0 ? own : p.collected * (effectiveOpexPct / 100)
+                // Under triple net the tenants reimburse the operating costs, so
+                // loading a landlord's expense allowance onto that property would
+                // understate it. Taxes are left in place: the source sheet
+                // subtracts them, and whether the reimbursements are already
+                // inside the rent figure is an open question, not an assumption
+                // to bake in here.
+                const isNNN = p.leases.length > 0 && p.leases.every((l) => l.leaseType === 'NNN')
+                const opex = isNNN ? 0 : useLogged && own > 0 ? own : p.collected * (effectiveOpexPct / 100)
                 const noi = p.collected - p.taxBill - opex
                 return (
                   <tr key={p.property.id} className="clickable" onClick={() => onProperty(p.property.id)}>
                     <td className="t-strong">{p.property.name}</td>
                     <td className="num">{money(p.collected)}</td>
                     <td className="num t-mute">{money(p.taxBill)}</td>
-                    <td className="num t-mute">{money(opex)}</td>
+                    <td className="num t-mute">
+                      {isNNN ? <span title="Triple net — tenants carry the operating costs">— NNN</span> : money(opex)}
+                    </td>
                     <td className="num t-strong">{money(noi)}</td>
                     <td className="num t-mute">{pct((noi / p.collected) * 100)}</td>
                     <td className="num t-strong">{money(valueAtCap(noi, cap))}</td>

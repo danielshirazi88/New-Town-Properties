@@ -68,12 +68,13 @@ or legal. Capitalising that figure overstates what the portfolio is worth, becau
 inherits those costs. The Valuation view reports both bases and lets you set an operating
 expense allowance, or swap it for real costs once they're logged in Expenses.
 
-**2. Nothing states whether these leases are triple net or modified gross.** All 52 sit
-unclassified. The bookkeeping hints at the answer — the sheets subtract the tax bill from
-gross rent, and a landlord only carries that cost when the tenant isn't reimbursing it,
-which points to gross or modified gross. But that is an inference, not a fact from the
-documents. Confirming it against the actual leases is the highest-value data fix available:
-it moves both the NOI and the valuation.
+**2. Mannheim Plaza is triple net; everything else is modified gross.** Confirmed by the
+owner — the source documents never state it. That matters for one figure in particular: under
+triple net the tenants reimburse the property tax, yet the sheet still subtracts Mannheim
+Plaza's full $83,142.43 bill from its rent to reach net. If those reimbursements are billed
+separately and are not inside the $377,925.32 rent figure, that property earns up to
+$83,142.43 more than shown — about $1.04M of value at an 8% cap. Nothing is adjusted on that
+basis; the app reports the sheet's figures and surfaces the question.
 
 ---
 

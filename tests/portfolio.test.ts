@@ -181,11 +181,18 @@ describe('Apollo', () => {
 })
 
 describe('confirmed by the owner', () => {
-  it('classifies every lease as modified gross', () => {
-    for (const l of LEASES) expect(l.leaseType, l.id).toBe('MG')
+  it('classifies every lease, modified gross except Mannheim Plaza', () => {
     const k = computeKpis()
     expect(k.leaseTypeCounts.UNKNOWN ?? 0).toBe(0)
-    expect(k.leaseTypeCounts.MG).toBe(LEASES.length)
+    expect(k.leaseTypeCounts.NNN).toBe(4)
+    expect(k.leaseTypeCounts.MG).toBe(LEASES.length - 4)
+  })
+
+  it('puts triple net on Mannheim Plaza and nowhere else', () => {
+    for (const l of LEASES) {
+      expect(l.leaseType, `${l.tenant} (${l.propertyId})`)
+        .toBe(l.propertyId === 'mannheim-plaza' ? 'NNN' : 'MG')
+    }
   })
 
   it('marks four Apollo homes as park-owned', () => {

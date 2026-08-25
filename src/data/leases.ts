@@ -301,7 +301,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2018-02-01',
     leaseEnd: '2026-01-31',
     statedEscalationPct: 4,
-    leaseType: 'MG',
+    leaseType: 'NNN',
     notes: 'Largest single commercial rent line in the portfolio.',
   },
   {
@@ -318,7 +318,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2022-01-01',
     leaseEnd: '2026-12-31',
     statedEscalationPct: 4,
-    leaseType: 'MG',
+    leaseType: 'NNN',
     notes: 'Marked for a 4% January bump but rent stayed flat all year — bump not taken.',
   },
   {
@@ -335,7 +335,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2024-07-01',
     leaseEnd: '2029-06-30',
     statedEscalationPct: 4,
-    leaseType: 'MG',
+    leaseType: 'NNN',
     notes: 'Longest remaining term in the portfolio — runs to June 2029.',
   },
   {
@@ -352,7 +352,7 @@ export const LEASES: Lease[] = [
     leaseStart: '2020-11-01',
     leaseEnd: '2025-10-31',
     statedEscalationPct: 4,
-    leaseType: 'MG',
+    leaseType: 'NNN',
   },
 
   // ─── West Plaza — 1901–1925 N Mannheim ─────────────────────────────────────
@@ -823,3 +823,24 @@ export const KNOWN_SOURCE_VARIANCES = [
       'Month cells sum to $41,115 but the sheet prints $40,965. The $150 gap flows through Plaza #2 ($344,765) and the portfolio grand total ($2,552,449.32), so both are understated by $150.',
   },
 ]
+
+/**
+ * The open question Mannheim Plaza's triple-net status raises.
+ *
+ * Under triple net the tenants reimburse the property tax, so the landlord does
+ * not ultimately bear the $83,142.43 the source sheet subtracts from that
+ * property's rent to reach its net. Whether the figures already account for that
+ * cannot be told from the documents, and the two possibilities differ by the
+ * whole tax bill:
+ *
+ *   - If the $377,925.32 of 2025 rent already includes tax reimbursements, the
+ *     printed net of $294,782.89 is right and nothing changes.
+ *   - If reimbursements are billed separately and never reached this sheet, the
+ *     rent shown is base rent only and this property's true net is understated
+ *     by up to $83,142.43 — which at an 8% cap is about $1.04M of value.
+ *
+ * Nothing is adjusted on this basis. The app reports the sheet's figures and
+ * surfaces the question rather than picking an answer.
+ */
+export const MANNHEIM_PLAZA_RECOVERY_NOTE =
+  'Mannheim Plaza is triple net, so its tenants reimburse the property tax. The source sheet still subtracts the full $83,142.43 bill from its rent to reach net. If those reimbursements are billed separately and are not in the $377,925.32 rent figure, this property earns up to $83,142.43 more than shown.'

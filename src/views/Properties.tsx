@@ -196,6 +196,14 @@ function PropertyDetail({
             <Kpi label="Largest tenant" value={m.largestTenant ? pct(m.largestTenant.sharePct) : '—'} small note={m.largestTenant?.tenant} />
             <Kpi label="Vacancy & free rent" value={money(m.vacancyLoss + m.concessionLoss)} note={`${m.darkMonths} dark months`} />
             <Kpi label="December monthly rent" value={money(m.exitMonthlyRent)} note={`${money(m.runRate)} annualised`} />
+        {m.leases.length > 0 && (
+          <Kpi label="Lease structure"
+            value={leaseStructureLabel(m.leases.map((l) => l.leaseType))}
+            small
+            note={m.leases.every((l) => l.leaseType === 'NNN')
+              ? 'Tenants reimburse taxes, insurance and CAM'
+              : 'Landlord carries the operating costs'} />
+        )}
           </>
         )}
       </div>
@@ -367,6 +375,16 @@ function PropertyDetail({
       </div>
     </>
   )
+}
+
+/** "Triple net", "Modified gross", or a mix if the property has both. */
+function leaseStructureLabel(types: string[]): string {
+  const unique = [...new Set(types)]
+  if (unique.length > 1) return 'Mixed'
+  const label: Record<string, string> = {
+    NNN: 'Triple net', MG: 'Modified gross', GROSS: 'Full service', UNKNOWN: 'Not stated',
+  }
+  return label[unique[0]] ?? 'Not stated'
 }
 
 function lastNumeric(months: readonly (number | 'V' | 'FREE')[]): number {
