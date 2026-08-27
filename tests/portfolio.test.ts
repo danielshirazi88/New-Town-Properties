@@ -3,7 +3,8 @@ import { LEASES } from '../src/data/leases'
 import { PROPERTIES } from '../src/data/properties'
 import { APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../src/data/apollo'
 import { collected, grossPotential, realisedEscalationPct, valueAtCap, walt } from '../src/lib/finance'
-import { computeKpis, valuationModel } from '../src/lib/portfolio'
+import { computeKpis, resolveData, valuationModel } from '../src/lib/portfolio'
+import { AVAILABLE_YEARS, rentRoll } from '../src/data/rentRolls'
 
 /**
  * These lock the transcription to the printed workbook. If a lease line is ever
@@ -235,5 +236,86 @@ describe('valuation', () => {
     const v = valuationModel(k, 8, 12)
     expect(v.trueNoi).toBeLessThan(k.netAfterTax)
     expect(v.valueOnTrueNoi).toBeLessThan(v.valueOnSheetNet)
+  })
+})
+
+
+describe('multi-year rent rolls', () => {
+  it('loads every registered year', () => {
+    expect(AVAILABLE_YEARS).toContain(2024)
+    expect(AVAILABLE_YEARS).toContain(2025)
+  })
+
+  it('gives every lease in every year exactly twelve months', () => {
+    for (const y of AVAILABLE_YEARS) {
+      for (const l of rentRoll(y).leases) expect(l.months, `${y} ${l.id}`).toHaveLength(12)
+    }
+  })
+
+  it('reconciles each year to its own printed totals', () => {
+    for (const y of AVAILABLE_YEARS) {
+      const roll = rentRoll(y)
+      const gross = roll.leases.reduce((a, l) => a + l.statedAnnualTotal, 0)
+      expect(gross, `${y} commercial gross`).toBeCloseTo(roll.statedTotals.commercialGross, 2)
+
+      const taxes = Object.entries(roll.tax)
+        .filter(([id]) => id !== 'apollo' && id !== 'prairie-1211')
+        .reduce((a, [, v]) => a + v.bill, 0)
+      expect(taxes, `${y} commercial taxes`).toBeCloseTo(roll.statedTotals.commercialTaxes, 2)
+
+      expect(gross + roll.apolloGross, `${y} total gross`).toBeCloseTo(roll.statedTotals.totalGross, 2)
+    }
+  })
+
+  it('matches month cells to row totals except the documented variances', () => {
+    for (const y of AVAILABLE_YEARS) {
+      const roll = rentRoll(y)
+      const known = new Set(roll.variances.map((v) => v.leaseId))
+      for (const l of roll.leases) {
+        if (known.has(l.id)) continue
+        const sum = l.months.reduce<number>((a, mth) => a + (typeof mth === 'number' ? mth : 0), 0)
+        expect(sum, `${y} ${l.id}`).toBeCloseTo(l.statedAnnualTotal, 2)
+      }
+    }
+  })
+
+  it('carries the $175 error the 2024 workbook makes on Genuine Automotive Detailing', () => {
+    const v = rentRoll(2024).variances.find((x) => x.leaseId === 'a25-genuine-detailing')!
+    expect(v.stated - v.computed).toBeCloseTo(175, 2)
+  })
+
+  it('applies each year its own tax bills', () => {
+    const a = computeKpis(undefined, resolveData(undefined, 2024))
+    const b = computeKpis(undefined, resolveData(undefined, 2025))
+    // 2024 income is taxed on the 2023 bills, 2025 on the 2024 bills.
+    expect(a.properties.find((p) => p.property.id === 'plaza-1')!.taxBill).toBeCloseTo(164360.68, 2)
+    expect(b.properties.find((p) => p.property.id === 'plaza-1')!.taxBill).toBeCloseTo(168992.55, 2)
+    expect(a.totalTaxes).toBeLessThan(b.totalTaxes)
+  })
+
+  it('shows the portfolio growing 2024 to 2025', () => {
+    const a = computeKpis(undefined, resolveData(undefined, 2024))
+    const b = computeKpis(undefined, resolveData(undefined, 2025))
+    expect(b.grossCollected).toBeGreaterThan(a.grossCollected)
+  })
+
+  it('reports Mannheim Plaza rising 8%, not 26%', () => {
+    const a = computeKpis(undefined, resolveData(undefined, 2024))
+    const b = computeKpis(undefined, resolveData(undefined, 2025))
+    const was = a.properties.find((p) => p.property.id === 'mannheim-plaza')!.collected
+    const now = b.properties.find((p) => p.property.id === 'mannheim-plaza')!.collected
+    expect(was).toBeCloseTo(349822.37, 2)
+    expect(now).toBeCloseTo(377925.32, 2)
+    expect(((now - was) / was) * 100).toBeCloseTo(8.0, 1)
+  })
+
+  it("catches Eva's Café bump, which is invisible inside a single year", () => {
+    const before = rentRoll(2024).leases.find((l) => l.id === 'mp-evas-cafe')!
+    const after = rentRoll(2025).leases.find((l) => l.id === 'mp-evas-cafe')!
+    // Flat within each year — its anniversary is 1 January.
+    expect(new Set(before.months).size).toBe(1)
+    expect(new Set(after.months).size).toBe(1)
+    // But the rate did rise between the years.
+    expect(after.months[0]).toBeGreaterThan(before.months[0] as number)
   })
 })

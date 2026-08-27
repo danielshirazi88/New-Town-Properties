@@ -25,6 +25,7 @@ There is no server and no database.
 |---|---|
 | **Executive dashboard** | Total income, net after tax, month-by-month income for the whole portfolio and for every property, what needs attention |
 | **Properties** | Every holding, with a rent roll, a month-by-month grid and an expense tab per property |
+| **Year over year** | What moved between rent rolls — turnover, vacancy, rent growth, per property and per unit |
 | **Rent roll** | Every tenant in the portfolio — the 52 commercial suites and the 37 Apollo lots, filterable by segment. Exports to CSV |
 | **Lease expirations** | Sorted by urgency, from already-lapsed through to beyond a year |
 | **Annual bumps** | Contracted escalation against what the rent actually did |
@@ -106,6 +107,14 @@ Expense records live in this browser's `localStorage`; receipt files live in Ind
 Nothing is uploaded anywhere — there is no server. That also means the data is per-browser
 and per-machine, so **export to CSV regularly** if it matters. Both the expense ledger and
 the rent roll have an Export CSV button.
+
+**Adding a year.** Each rent roll lives in `src/data/rentRolls/y<year>.ts` with its own
+lease lines, its own tax bills and its own printed totals, registered in
+`src/data/rentRolls/index.ts`. Years are kept whole and separate rather than merged,
+because tenants turn over, units sit empty and properties get bought and sold — a
+portfolio modelled as one list with dates attached loses all of that. A property carries
+`acquiredYear` and `soldYear`, so selling a building removes it from later years without
+rewriting the years you owned it.
 
 **Rent roll corrections** are made in the app: the Rent roll tab has an Edit button on
 every line for rent, dates, annual bump, lease type and square footage. Edits are stored

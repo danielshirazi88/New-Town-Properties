@@ -83,6 +83,14 @@ export interface Property {
    * otherwise those figures would stop matching the document they came from.
    */
   onRentRoll?: boolean
+  /** First year owned, when known. Absent means "before the records we hold". */
+  acquiredYear?: number
+  /**
+   * Year the property was sold. It still appears in the years it was owned and
+   * disappears from later ones, rather than being deleted — otherwise selling a
+   * building would silently rewrite history.
+   */
+  soldYear?: number
   notes?: string
 }
 

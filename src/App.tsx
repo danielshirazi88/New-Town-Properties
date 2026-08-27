@@ -17,11 +17,12 @@ import { useStored } from './lib/useStored'
 import { STORE_KEYS, server, store } from './lib/store'
 import { SignIn } from './components/SignIn'
 import type { TaxEntries } from './lib/taxes'
-import { LEASES } from './data/leases'
+import { YearOverYear } from './views/YearOverYear'
+import { AVAILABLE_YEARS, CURRENT_YEAR, rentRoll } from './data/rentRolls'
 
 type Tab =
   | 'dashboard' | 'properties' | 'rentroll' | 'expirations'
-  | 'escalations' | 'expenses' | 'taxes' | 'valuation' | 'apollo' | 'integrity'
+  | 'escalations' | 'expenses' | 'taxes' | 'valuation' | 'apollo' | 'integrity' | 'yoy'
 
 export default function App() {
   const info = server()
@@ -29,6 +30,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [selectedProperty, setSelectedProperty] = useState<string | undefined>()
   const [expenseSeed, setExpenseSeed] = useState<string | undefined>()
+  const [year, setYear] = useState<number>(CURRENT_YEAR)
 
   const overridesState = useStored<Overrides>(STORE_KEYS.overrides, EMPTY_OVERRIDES)
   const expensesState = useStored<Expense[]>(STORE_KEYS.expenses, [])
@@ -39,7 +41,7 @@ export default function App() {
   const setExpenses = expensesState.setValue
 
   // Edits are layered over the source documents, then everything is recomputed.
-  const data = useMemo(() => resolveData(overrides), [overrides])
+  const data = useMemo(() => resolveData(overrides, year), [overrides, year])
   const k = useMemo(() => computeKpis(undefined, data), [data])
   const edits = editCount(overrides)
   const saving = overridesState.saving || expensesState.saving || taxState.saving
@@ -66,6 +68,7 @@ export default function App() {
 
   const nav: { id: Tab; label: string; count?: string; group: string }[] = [
     { id: 'dashboard', label: 'Executive dashboard', group: 'Overview' },
+    { id: 'yoy', label: 'Year over year', count: String(AVAILABLE_YEARS.length), group: 'Overview' },
     { id: 'properties', label: 'Properties', count: String(k.propertyCount), group: 'Overview' },
     { id: 'rentroll', label: 'Rent roll', count: String(k.unitCount + data.apolloTenants.filter((t) => !t.isParking).length), group: 'Tenants' },
     { id: 'expirations', label: 'Lease expirations', count: String(k.expiredLeases.length + k.expiring12.length), group: 'Tenants' },
@@ -85,7 +88,13 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark">Portfolio OS</div>
           <div className="brand-name">New Town Properties</div>
-          <div className="brand-sub">{money(k.grossCollected)} gross · FY {k.fiscalYear}</div>
+          <div className="brand-sub">{money(k.grossCollected)} gross</div>
+          <label className="field" style={{ marginTop: 8 }}>
+            <span>Rent roll year</span>
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
+              {AVAILABLE_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </label>
           <div className="brand-sub" style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
             <span className={`status-dot ${store().kind === 'remote' ? 'safe' : 'watch'}`} aria-hidden />
             {store().label}
@@ -139,7 +148,7 @@ export default function App() {
             apolloTenants={data.apolloTenants}
             overrides={overrides}
             setOverrides={overridesState.setValue}
-            originalLeases={LEASES}
+            originalLeases={rentRoll(year).leases}
           />
         )}
         {tab === 'expirations' && <Expirations k={k} onProperty={goProperty} />}
@@ -153,6 +162,7 @@ export default function App() {
         {tab === 'valuation' && <Valuation k={k} expenses={expenses} onProperty={goProperty} />}
         {tab === 'apollo' && <Apollo k={k} tenants={data.apolloTenants} />}
         {tab === 'integrity' && <DataIntegrity k={k} onProperty={goProperty} />}
+        {tab === 'yoy' && <YearOverYear overrides={overrides} onProperty={goProperty} />}
       </main>
     </div>
   )

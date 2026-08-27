@@ -1,6 +1,6 @@
 import { APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../data/apollo'
-import { LEASES } from '../data/leases'
 import { PROPERTIES } from '../data/properties'
+import { CURRENT_YEAR, rentRoll } from '../data/rentRolls'
 import {
   applyApolloOverrides, applyLeaseOverrides, applyPropertyOverrides,
   EMPTY_OVERRIDES, type Overrides,
@@ -138,13 +138,40 @@ export interface ResolvedData {
   properties: Property[]
   leases: Lease[]
   apolloTenants: ApolloTenant[]
+  year: number
 }
 
-export function resolveData(overrides: Overrides = EMPTY_OVERRIDES): ResolvedData {
+export function resolveData(
+  overrides: Overrides = EMPTY_OVERRIDES,
+  year: number = CURRENT_YEAR,
+): ResolvedData {
+  const roll = rentRoll(year)
+
+  // Each year carries its own tax bills and its own Apollo figure, so the
+  // property records are rebuilt against the year being viewed before any hand
+  // edits are layered on.
+  const forYear = PROPERTIES
+    .filter((p) => p.soldYear === undefined || year <= p.soldYear)
+    .filter((p) => p.acquiredYear === undefined || year >= p.acquiredYear)
+    .map((p) => {
+      const tax = roll.tax[p.id]
+      const gross = p.id === 'apollo'
+        ? roll.apolloGross
+        : roll.leases.filter((l) => l.propertyId === p.id).reduce((a, l) => a + l.statedAnnualTotal, 0)
+      return {
+        ...p,
+        taxBill: tax?.bill ?? 0,
+        taxBillYear: tax?.billYear ?? p.taxBillYear,
+        statedGross: gross,
+        statedNetAfterTax: gross - (tax?.bill ?? 0),
+      }
+    })
+
   return {
-    properties: applyPropertyOverrides(PROPERTIES, overrides),
-    leases: applyLeaseOverrides(LEASES, overrides),
+    properties: applyPropertyOverrides(forYear, overrides),
+    leases: applyLeaseOverrides(roll.leases, overrides),
     apolloTenants: applyApolloOverrides(APOLLO_TENANTS, overrides),
+    year,
   }
 }
 
@@ -246,7 +273,7 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
 
   return {
     asOf,
-    fiscalYear: 2025,
+    fiscalYear: data.year,
 
     grossCollected,
     grossPotential: potential,
