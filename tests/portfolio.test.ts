@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { LEASES } from '../src/data/leases'
 import { PROPERTIES } from '../src/data/properties'
 import { APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../src/data/apollo'
-import { collected, grossPotential, realisedEscalationPct, valueAtCap, walt } from '../src/lib/finance'
+import { collected, grossPotential, realisedEscalationPct, rentPerSqFt, valueAtCap, walt } from '../src/lib/finance'
 import { computeKpis, resolveData, valuationModel } from '../src/lib/portfolio'
-import { AVAILABLE_YEARS, rentRoll } from '../src/data/rentRolls'
+import { AVAILABLE_YEARS, CURRENT_YEAR, LATEST_YEAR, isPartYear, rentRoll, yearLabel } from '../src/data/rentRolls'
 
 /**
  * These lock the transcription to the printed workbook. If a lease line is ever
@@ -70,7 +70,7 @@ describe('property totals', () => {
 })
 
 describe('portfolio reconciliation', () => {
-  const k = computeKpis(new Date('2026-08-25T00:00:00'))
+  const k = computeKpis(new Date('2026-08-25T00:00:00'), resolveData(undefined, 2025))
 
   it('ties commercial taxes to the workbook exactly', () => {
     expect(k.commercialTaxes).toBeCloseTo(SHEET.commercialTaxes, 2)
@@ -111,7 +111,7 @@ describe('escalations', () => {
   })
 
   it('flags a flat year against a contracted bump', () => {
-    const k = computeKpis(new Date('2026-08-25T00:00:00'))
+    const k = computeKpis(new Date('2026-08-25T00:00:00'), resolveData(undefined, 2025))
     const evas = k.bumpsNotTaken.find((b) => b.lease.id === 'mp-evas-cafe')
     expect(evas).toBeDefined()
     expect(evas!.realisedPct).toBeCloseTo(0, 2)
@@ -158,14 +158,14 @@ describe('Apollo', () => {
   it('bills parking at $100 a space, $500 a month in total', () => {
     const parking = APOLLO_TENANTS.filter((t) => t.isParking)
     for (const space of parking) expect(space.amountDue).toBe(100)
-    const k = computeKpis()
+    const k = computeKpis(undefined, resolveData(undefined, 2025))
     expect(k.apolloParkingMonthly).toBe(500)
     expect(k.apolloMonthlyBilled).toBe(33100)
     expect(k.apolloAnnualisedCurrent).toBe(397200)
   })
 
   it('charges water on dwelling lots only, never on parking', () => {
-    const k = computeKpis()
+    const k = computeKpis(undefined, resolveData(undefined, 2025))
     expect(k.apolloWaterRevenueMonthly).toBe(37 * APOLLO_WATER_CHARGE)
     // Base + water reconstructs the LOT bill; parking sits outside both.
     expect(k.apolloBaseRentMonthly + k.apolloWaterRevenueMonthly).toBeCloseTo(k.apolloLotMonthly, 2)
@@ -173,7 +173,7 @@ describe('Apollo', () => {
   })
 
   it('keeps parking out of the lot averages', () => {
-    const k = computeKpis()
+    const k = computeKpis(undefined, resolveData(undefined, 2025))
     // A $100 space must not become "the cheapest lot".
     expect(k.apolloMinLotRent).toBe(650)
     expect(k.apolloMaxLotRent).toBe(1320)
@@ -183,7 +183,7 @@ describe('Apollo', () => {
 
 describe('confirmed by the owner', () => {
   it('classifies every lease, modified gross except Mannheim Plaza', () => {
-    const k = computeKpis()
+    const k = computeKpis(undefined, resolveData(undefined, 2025))
     expect(k.leaseTypeCounts.UNKNOWN ?? 0).toBe(0)
     expect(k.leaseTypeCounts.NNN).toBe(4)
     expect(k.leaseTypeCounts.MG).toBe(LEASES.length - 4)
@@ -212,7 +212,7 @@ describe('confirmed by the owner', () => {
   })
 
   it('carries the vacant Chicago unit as a cost, not as income', () => {
-    const k = computeKpis()
+    const k = computeKpis(undefined, resolveData(undefined, 2025))
     const prairie = k.properties.find((p) => p.property.id === 'prairie-1211')!
     expect(prairie.collected).toBe(0)
     expect(prairie.taxBill).toBe(15080)
@@ -232,7 +232,7 @@ describe('valuation', () => {
   })
 
   it('values true NOI below the sheet net, since the sheet omits opex', () => {
-    const k = computeKpis()
+    const k = computeKpis(undefined, resolveData(undefined, 2025))
     const v = valuationModel(k, 8, 12)
     expect(v.trueNoi).toBeLessThan(k.netAfterTax)
     expect(v.valueOnTrueNoi).toBeLessThan(v.valueOnSheetNet)
@@ -255,6 +255,8 @@ describe('multi-year rent rolls', () => {
   it('reconciles each year to its own printed totals', () => {
     for (const y of AVAILABLE_YEARS) {
       const roll = rentRoll(y)
+      // A part-year sheet prints no totals, so there is nothing to reconcile.
+      if (!roll.hasControlTotals) continue
       const gross = roll.leases.reduce((a, l) => a + l.statedAnnualTotal, 0)
       expect(gross, `${y} commercial gross`).toBeCloseTo(roll.statedTotals.commercialGross, 2)
 
@@ -317,5 +319,78 @@ describe('multi-year rent rolls', () => {
     expect(new Set(after.months).size).toBe(1)
     // But the rate did rise between the years.
     expect(after.months[0]).toBeGreaterThan(before.months[0] as number)
+  })
+})
+
+
+describe('2026 rent roll', () => {
+  const k = computeKpis(undefined, resolveData(undefined, 2026))
+
+  it('is a part-year sheet covering January to August', () => {
+    expect(rentRoll(2026).monthsReported).toBe(8)
+    expect(rentRoll(2026).hasControlTotals).toBe(false)
+  })
+
+  it('does not mistake unreported months for vacancy', () => {
+    const lease = rentRoll(2026).leases.find((l) => l.id === 'p1-michoacana')!
+    // Four months the sheet simply does not cover.
+    expect(lease.months.filter((m) => m === 'NR')).toHaveLength(4)
+    // ...and none of them count as lost rent.
+    expect(lease.months.filter((m) => m === 'V')).toHaveLength(0)
+  })
+
+  it('keeps West Plaza in 2026 and drops it afterwards', () => {
+    expect(k.properties.some((p) => p.property.id === 'west-plaza')).toBe(true)
+    expect(resolveData(undefined, 2027).properties.some((p) => p.id === 'west-plaza')).toBe(false)
+  })
+
+  it('treats the seller-financing payment as a note, not rent', () => {
+    const note = rentRoll(2026).leases.find((l) => l.id === 'wp-castaldo-note')!
+    expect(note.incomeType).toBe('note')
+    // A note has no floor area, so it must never produce a rent per square foot.
+    expect(rentPerSqFt(note)).toBeUndefined()
+  })
+
+  it('records square footage and computes a rate from it', () => {
+    expect(k.totalSquareFeet).toBeGreaterThan(80_000)
+    expect(k.rentPerSqFt).toBeGreaterThan(0)
+    expect(k.leasedSquareFeet + k.vacantSquareFeet).toBe(k.totalSquareFeet)
+  })
+
+  it('excludes billboard, parking and note income from the rate', () => {
+    for (const id of ['pp1538-lamar', 'n43-garage', 'wp-castaldo-note']) {
+      const l = rentRoll(2026).leases.find((x) => x.id === id)!
+      expect(rentPerSqFt(l), id).toBeUndefined()
+    }
+  })
+
+  it('counts the newly listed empty units at Plaza #1', () => {
+    const empties = rentRoll(2026).leases.filter(
+      (l) => l.propertyId === 'plaza-1' && l.squareFeet && collected(l) === 0,
+    )
+    // 2F apartment, RW warehouse, R1 and R2.
+    expect(empties).toHaveLength(4)
+    expect(empties.reduce((a, l) => a + (l.squareFeet ?? 0), 0)).toBe(4170)
+  })
+
+  it('finally lets unit 2B, empty in both prior years', () => {
+    expect(collected(rentRoll(2024).leases.find((l) => l.id === 'p1-unstoppable')!)).toBe(0)
+    expect(collected(rentRoll(2025).leases.find((l) => l.id === 'p1-unstoppable')!)).toBe(0)
+    expect(collected(rentRoll(2026).leases.find((l) => l.id === 'p1-unstoppable')!)).toBeGreaterThan(0)
+  })
+})
+
+
+describe('the default year', () => {
+  it('opens on the most recent complete year, not a part year', () => {
+    expect(CURRENT_YEAR).toBe(2025)
+    expect(LATEST_YEAR).toBe(2026)
+    expect(isPartYear(CURRENT_YEAR)).toBe(false)
+    expect(isPartYear(LATEST_YEAR)).toBe(true)
+  })
+
+  it('labels a part year so it cannot be read as a full one', () => {
+    expect(yearLabel(2025)).toBe('2025')
+    expect(yearLabel(2026)).toContain('through August')
   })
 })

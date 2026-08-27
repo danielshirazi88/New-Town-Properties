@@ -1,6 +1,7 @@
 import type { Lease } from '../../lib/types'
 import { APOLLO_GROSS_2024, KNOWN_VARIANCES_2024, LEASES_2024, STATED_TOTALS_2024, TAX_2024 } from './y2024'
 import { APOLLO_GROSS_2025, KNOWN_VARIANCES_2025, LEASES_2025, STATED_TOTALS_2025, TAX_2025 } from './y2025'
+import { APOLLO_GROSS_2026, KNOWN_VARIANCES_2026, LEASES_2026, MONTHS_REPORTED_2026, STATED_TOTALS_2026, TAX_2026 } from './y2026'
 
 /**
  * One rent roll per year.
@@ -29,6 +30,10 @@ export interface RentRollYear {
   }
   /** Rows where the workbook's own arithmetic disagrees with its month cells. */
   variances: { leaseId: string; computed: number; stated: number; note: string }[]
+  /** Months the sheet covers. Below 12 means a part-year roll pulled mid-year. */
+  monthsReported: number
+  /** False when the sheet prints no totals, so the transcription cannot be checked. */
+  hasControlTotals: boolean
 }
 
 export const RENT_ROLLS: Record<number, RentRollYear> = {
@@ -39,6 +44,8 @@ export const RENT_ROLLS: Record<number, RentRollYear> = {
     apolloGross: APOLLO_GROSS_2024,
     statedTotals: STATED_TOTALS_2024,
     variances: KNOWN_VARIANCES_2024,
+    monthsReported: 12,
+    hasControlTotals: true,
   },
   2025: {
     year: 2025,
@@ -47,13 +54,48 @@ export const RENT_ROLLS: Record<number, RentRollYear> = {
     apolloGross: APOLLO_GROSS_2025,
     statedTotals: STATED_TOTALS_2025,
     variances: KNOWN_VARIANCES_2025,
+    monthsReported: 12,
+    hasControlTotals: true,
+  },
+  2026: {
+    year: 2026,
+    leases: LEASES_2026,
+    tax: TAX_2026,
+    apolloGross: APOLLO_GROSS_2026,
+    statedTotals: STATED_TOTALS_2026,
+    variances: KNOWN_VARIANCES_2026,
+    monthsReported: MONTHS_REPORTED_2026,
+    hasControlTotals: false,
   },
 }
 
 export const AVAILABLE_YEARS: number[] = Object.keys(RENT_ROLLS).map(Number).sort((a, b) => a - b)
 
-/** The year the app opens on: the most recent one loaded. */
-export const CURRENT_YEAR: number = AVAILABLE_YEARS[AVAILABLE_YEARS.length - 1]
+/** The most recent year loaded, complete or not. */
+export const LATEST_YEAR: number = AVAILABLE_YEARS[AVAILABLE_YEARS.length - 1]
+
+/**
+ * The year the app opens on: the most recent *complete* one.
+ *
+ * A part-year sheet makes a poor default. Opening on eight months of 2026 would
+ * show income of $1.65M against 2025's $2.93M and read as a collapse, when the
+ * only thing that happened is that the year is not over. The current year is one
+ * click away in the picker and labelled as partial wherever it is shown.
+ */
+export const CURRENT_YEAR: number =
+  [...AVAILABLE_YEARS].reverse().find((y) => RENT_ROLLS[y].monthsReported === 12) ?? LATEST_YEAR
+
+/** How a year is described in the picker and in headings. */
+export function yearLabel(year: number): string {
+  const roll = RENT_ROLLS[year]
+  if (!roll || roll.monthsReported === 12) return String(year)
+  const upto = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'][roll.monthsReported - 1]
+  return `${year} (through ${upto})`
+}
+
+export const isPartYear = (year: number): boolean =>
+  (RENT_ROLLS[year]?.monthsReported ?? 12) < 12
 
 export const rentRoll = (year: number): RentRollYear => RENT_ROLLS[year] ?? RENT_ROLLS[CURRENT_YEAR]
 

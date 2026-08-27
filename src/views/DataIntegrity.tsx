@@ -25,8 +25,10 @@ export function DataIntegrity({ k, onProperty }: { k: PortfolioKpis; onProperty:
   const grossDelta = k.commercialGross - SHEET_TOTALS.commercialGross
 
   const gaps = [
-    { label: 'Square footage missing', count: k.unitCount, of: k.unitCount,
-      detail: 'No unit sizes anywhere in the source, so rent per square foot cannot be computed — the standard way to compare a rent to the market.' },
+    { label: 'Square footage', count: k.unmeasuredUnits, of: k.unitCount,
+      detail: k.totalSquareFeet > 0
+        ? `${k.totalSquareFeet.toLocaleString()} sq ft recorded from the 2026 sheet, the first to carry unit areas. ${k.unmeasuredUnits} units still have none.`
+        : 'Not recorded on this year\'s sheet. The 2026 rent roll is the first to carry unit areas — switch the year to see them.' },
     { label: 'No lease end date', count: k.noEndDateLeases.length, of: k.unitCount,
       detail: 'RTS, Lamar Billboard, the 1643 garage, Florida and Unstoppable Beauty Lounge.' },
     { label: 'No cap rate or appraised value', count: k.propertyCount, of: k.propertyCount,

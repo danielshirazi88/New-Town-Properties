@@ -182,6 +182,16 @@ export function Dashboard({
         <div className="kpi-grid">
           <Kpi label="Occupancy (units)" value={pct(k.physicalOccupancyPct)}
             note={`${k.occupiedUnits} of ${k.unitCount} units producing rent`} />
+          {k.totalSquareFeet > 0 && (
+            <>
+              <Kpi label="Rentable area" value={`${Math.round(k.totalSquareFeet / 1000)}k sf`}
+                note={`${k.totalSquareFeet.toLocaleString()} sq ft recorded`} />
+              <Kpi accent label="Rent per sq ft" value={`$${k.rentPerSqFt.toFixed(2)}`}
+                note="Annualised across let space" />
+              <Kpi label="Occupancy (area)" value={pct(k.occupancyBySqFtPct)}
+                note={`${k.vacantSquareFeet.toLocaleString()} sq ft empty`} />
+            </>
+          )}
           <Kpi label="Economic occupancy" value={pct(k.economicOccupancyPct)}
             note="Collected against full-year potential" />
           <Kpi label="WALT" value={`${k.walt.toFixed(2)} yr`}

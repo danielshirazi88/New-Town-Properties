@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Card, Empty, ExpiryBadge, Kpi } from '../components/ui'
-import { cellAmount, collected, darkMonths, isDark, realisedEscalationPct, tenancyYears } from '../lib/finance'
+import { cellAmount, collected, darkMonths, isDark, realisedEscalationPct, rentPerSqFt, tenancyYears } from '../lib/finance'
 import { dateLabel, money, num, signedPct } from '../lib/format'
 import { download } from '../lib/expenses'
 import { ApolloRoll } from '../components/ApolloRoll'
@@ -161,7 +161,9 @@ export function RentRoll({
                   <th>Term</th>
                   <th>Status</th>
                   {head('bump', 'Bump', true)}
-                  {head('rent', '2025 rent', true)}
+                  <th className="num">Sq ft</th>
+                  <th className="num">Rent / sf</th>
+                  {head('rent', 'Year rent', true)}
                   <th className="num">Monthly</th>
                   <th>Contacts</th>
                   <th />
@@ -173,6 +175,7 @@ export function RentRoll({
                   const years = tenancyYears(l)
                   const dark = darkMonths(l)
                   const edited = changedFields(overrides.leases[l.id])
+                  const psf = rentPerSqFt(l)
                   return (
                     <tr key={l.id} className="clickable" onClick={() => onProperty(l.propertyId)}>
                       <td>
@@ -195,6 +198,8 @@ export function RentRoll({
                           </span>
                         )}
                       </td>
+                      <td className="num t-mute">{l.squareFeet ? l.squareFeet.toLocaleString() : '—'}</td>
+                      <td className="num">{psf !== undefined ? `$${psf.toFixed(2)}` : <span className="t-mute">—</span>}</td>
                       <td className="num t-strong">{money(collected(l))}</td>
                       <td className="num t-mute">{money(currentMonthly(l))}</td>
                       <td className="t-mute" style={{ fontSize: 11.5 }}>
@@ -215,6 +220,8 @@ export function RentRoll({
               <tfoot>
                 <tr>
                   <td className="label" colSpan={8}>{rows.length} tenants</td>
+                  <td className="num">{rows.reduce((a, l) => a + (l.squareFeet ?? 0), 0).toLocaleString()}</td>
+                  <td />
                   <td className="num">{money(totalRent)}</td>
                   <td className="num">{money(rows.reduce((a, l) => a + currentMonthly(l), 0))}</td>
                   <td />

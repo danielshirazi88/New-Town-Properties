@@ -65,6 +65,10 @@ export const PROPERTIES: Property[] = [
     statedGross: 458761.0,
     statedNetAfterTax: 388896.66,
     sourcePage: 4,
+    soldYear: 2026,
+    soldDate: '2026-04-30',
+    notes:
+      'Sold on 30 April 2026 with seller financing: the buyer, Anthony Castaldo, pays $6,140.87 a month from June 2026 to May 2029. Tenants paid through April; from June the note replaces them. The property still appears in every year it was owned.',
   },
   {
     id: 'mannheim-1500',

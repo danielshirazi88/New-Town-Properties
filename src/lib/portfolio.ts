@@ -105,6 +105,19 @@ export interface PortfolioKpis {
   leaseTypeCounts: Record<string, number>
   unknownLeaseTypeRent: number
 
+  // ── Square footage ───────────────────────────────────────────────────────
+  totalSquareFeet: number
+  leasedSquareFeet: number
+  vacantSquareFeet: number
+  occupancyBySqFtPct: number
+  /** Portfolio rent per square foot, annualised, across let space only. */
+  rentPerSqFt: number
+  /** Units with no recorded area — the rate above does not cover these. */
+  unmeasuredUnits: number
+  /** Rent forgone each year on empty space, at the property's own rate. */
+  vacantSqFtAnnualValue: number
+  securityDepositsHeld: number
+
   // ── Apollo ───────────────────────────────────────────────────────────────
   apolloLots: number
   apolloParkingSpaces: number
@@ -342,6 +355,25 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
     unknownLeaseTypeRent: commercialLeases
       .filter((l) => l.leaseType === 'UNKNOWN')
       .reduce((a, l) => a + collected(l), 0),
+
+    totalSquareFeet: props.reduce((a, p) => a + p.squareFeet, 0),
+    leasedSquareFeet: props.reduce((a, p) => a + p.leasedSquareFeet, 0),
+    vacantSquareFeet: props.reduce((a, p) => a + p.vacantSquareFeet, 0),
+    occupancyBySqFtPct: (() => {
+      const total = props.reduce((a, p) => a + p.squareFeet, 0)
+      const leased = props.reduce((a, p) => a + p.leasedSquareFeet, 0)
+      return total > 0 ? (leased / total) * 100 : 0
+    })(),
+    rentPerSqFt: (() => {
+      const leased = props.reduce((a, p) => a + p.leasedSquareFeet, 0)
+      const rent = props.reduce((a, p) => a + p.rentPerSqFt * p.leasedSquareFeet, 0)
+      return leased > 0 ? rent / leased : 0
+    })(),
+    unmeasuredUnits: props.reduce((a, p) => a + p.unmeasuredUnits, 0),
+    // Empty space valued at the rate its own property actually achieves, which
+    // is a fairer estimate than a single portfolio-wide average.
+    vacantSqFtAnnualValue: props.reduce((a, p) => a + p.vacantSquareFeet * p.rentPerSqFt, 0),
+    securityDepositsHeld: commercialLeases.reduce((a, l) => a + (l.securityDeposit ?? 0), 0),
 
     apolloLots: paying.length,
     apolloParkingSpaces: parking.length,

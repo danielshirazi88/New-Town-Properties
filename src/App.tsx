@@ -18,11 +18,12 @@ import { STORE_KEYS, server, store } from './lib/store'
 import { SignIn } from './components/SignIn'
 import type { TaxEntries } from './lib/taxes'
 import { YearOverYear } from './views/YearOverYear'
-import { AVAILABLE_YEARS, CURRENT_YEAR, rentRoll } from './data/rentRolls'
+import { SquareFootage } from './views/SquareFootage'
+import { AVAILABLE_YEARS, CURRENT_YEAR, isPartYear, rentRoll, yearLabel } from './data/rentRolls'
 
 type Tab =
   | 'dashboard' | 'properties' | 'rentroll' | 'expirations'
-  | 'escalations' | 'expenses' | 'taxes' | 'valuation' | 'apollo' | 'integrity' | 'yoy'
+  | 'escalations' | 'expenses' | 'taxes' | 'valuation' | 'apollo' | 'integrity' | 'yoy' | 'sqft'
 
 export default function App() {
   const info = server()
@@ -74,6 +75,7 @@ export default function App() {
     { id: 'expirations', label: 'Lease expirations', count: String(k.expiredLeases.length + k.expiring12.length), group: 'Tenants' },
     { id: 'escalations', label: 'Annual bumps', count: String(k.bumpsNotTaken.length), group: 'Tenants' },
     { id: 'apollo', label: 'Apollo park', count: String(k.apolloLots), group: 'Tenants' },
+    { id: 'sqft', label: 'Square footage', count: k.totalSquareFeet ? `${Math.round(k.totalSquareFeet / 1000)}k` : undefined, group: 'Tenants' },
     { id: 'expenses', label: 'Expenses', count: expenses.length ? String(expenses.length) : undefined, group: 'Money' },
     { id: 'taxes', label: 'Taxes — Schedule E', group: 'Money' },
     { id: 'valuation', label: 'Valuation', group: 'Money' },
@@ -92,7 +94,7 @@ export default function App() {
           <label className="field" style={{ marginTop: 8 }}>
             <span>Rent roll year</span>
             <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
-              {AVAILABLE_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+              {AVAILABLE_YEARS.map((y) => <option key={y} value={y}>{yearLabel(y)}</option>)}
             </select>
           </label>
           <div className="brand-sub" style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -129,6 +131,21 @@ export default function App() {
       </aside>
 
       <main className="main">
+        {isPartYear(year) && (
+          <div className="callout" style={{ marginBottom: 18 }}>
+            <div className="callout-title">
+              {year} is a part year — {rentRoll(year).monthsReported} months of data
+            </div>
+            <p>
+              Every total on this screen covers January to{' '}
+              {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+                'September', 'October', 'November', 'December'][rentRoll(year).monthsReported - 1]}{' '}
+              only, so it is not comparable with a full year. Months the sheet does not cover are shown
+              as — and are not counted as vacancy.
+              {!rentRoll(year).hasControlTotals && ' This sheet prints no totals, so the transcription has nothing to be checked against.'}
+            </p>
+          </div>
+        )}
         {tab === 'dashboard' && (
           <Dashboard k={k} expenses={expenses} onProperty={goProperty} onNav={(t) => setTab(t as Tab)} />
         )}
@@ -163,6 +180,7 @@ export default function App() {
         {tab === 'apollo' && <Apollo k={k} tenants={data.apolloTenants} />}
         {tab === 'integrity' && <DataIntegrity k={k} onProperty={goProperty} />}
         {tab === 'yoy' && <YearOverYear overrides={overrides} onProperty={goProperty} />}
+        {tab === 'sqft' && <SquareFootage k={k} onProperty={goProperty} />}
       </main>
     </div>
   )

@@ -13,7 +13,12 @@ export const cellAmount = (c: MonthCell): number => (typeof c === 'number' ? c :
 
 export const isVacant = (c: MonthCell): boolean => c === 'V'
 export const isFree = (c: MonthCell): boolean => c === 'FREE'
-/** A month where nothing was collected, whether from vacancy or a concession. */
+/** A month the sheet does not cover — a part-year rent roll, not a vacancy. */
+export const isUnreported = (c: MonthCell): boolean => c === 'NR'
+/**
+ * A month where nothing was collected, whether from vacancy or a concession.
+ * An unreported month is not dark: nobody lost rent, the sheet just stops.
+ */
 export const isDark = (c: MonthCell): boolean => c === 'V' || c === 'FREE'
 
 /** Sum of the twelve month cells — what the tenant actually paid in 2025. */
@@ -26,10 +31,10 @@ export const collected = (l: Lease): number => l.months.reduce<number>((a, m) =>
  */
 export function imputedRate(l: Lease, index: number): number {
   for (let i = index + 1; i < l.months.length; i++) {
-    if (!isDark(l.months[i])) return cellAmount(l.months[i])
+    if (!isDark(l.months[i]) && !isUnreported(l.months[i])) return cellAmount(l.months[i])
   }
   for (let i = index - 1; i >= 0; i--) {
-    if (!isDark(l.months[i])) return cellAmount(l.months[i])
+    if (!isDark(l.months[i]) && !isUnreported(l.months[i])) return cellAmount(l.months[i])
   }
   return 0
 }
@@ -55,14 +60,29 @@ export function grossPotential(l: Lease): number {
 
 /** First and last months that actually collected, used to measure the real bump. */
 export function firstRate(l: Lease): number {
-  const m = l.months.find((c) => !isDark(c))
+  const m = l.months.find((c) => !isDark(c) && !isUnreported(c))
   return m === undefined ? 0 : cellAmount(m)
 }
 export function lastRate(l: Lease): number {
   for (let i = l.months.length - 1; i >= 0; i--) {
-    if (!isDark(l.months[i])) return cellAmount(l.months[i])
+    if (!isDark(l.months[i]) && !isUnreported(l.months[i])) return cellAmount(l.months[i])
   }
   return 0
+}
+
+/** Months the sheet actually covers — 12 for a full year, fewer part-way through one. */
+export const reportedMonths = (l: Lease): number => l.months.filter((m) => !isUnreported(m)).length
+
+/**
+ * Rent per square foot per year, the standard way to compare a rent to the
+ * market. Annualised from the exit rate so a part-year sheet still compares.
+ * Returns undefined where there is no square footage or the income is not rent.
+ */
+export function rentPerSqFt(l: Lease): number | undefined {
+  if (!l.squareFeet || l.squareFeet <= 0) return undefined
+  if (l.incomeType && l.incomeType !== 'rent') return undefined
+  const annual = lastRate(l) * 12
+  return annual > 0 ? annual / l.squareFeet : undefined
 }
 
 /**
@@ -188,6 +208,19 @@ export interface PropertyMetrics {
   avgRealisedEscalationPct?: number
   /** Share of the whole portfolio's collected rent. */
   portfolioSharePct: number
+
+  // ── Square footage ───────────────────────────────────────────────────────
+  /** Rentable area recorded across the property's units. */
+  squareFeet: number
+  /** Area under a paying tenant. */
+  leasedSquareFeet: number
+  vacantSquareFeet: number
+  /** Share of recorded area that is let. The honest occupancy measure. */
+  occupancyBySqFtPct: number
+  /** Annualised rent divided by leased area — comparable to the market. */
+  rentPerSqFt: number
+  /** How much of the property's area carries no recorded size. */
+  unmeasuredUnits: number
 }
 
 export function propertyMetrics(
@@ -202,6 +235,18 @@ export function propertyMetrics(
   const vac = leases.reduce((a, l) => a + vacancyLoss(l), 0)
   const con = leases.reduce((a, l) => a + concessionLoss(l), 0)
   const occupied = leases.filter((l) => !isFullyVacant(l)).length
+
+  // Square footage is only meaningful for space that is actually let by area —
+  // a billboard ground lease, a parking row and a seller-financing note all
+  // carry income but no floor space, and folding them in would distort the rate.
+  const measurable = leases.filter((l) => (l.incomeType ?? 'rent') === 'rent')
+  const sqFt = measurable.reduce((a, l) => a + (l.squareFeet ?? 0), 0)
+  const leasedSqFt = measurable
+    .filter((l) => lastRate(l) > 0)
+    .reduce((a, l) => a + (l.squareFeet ?? 0), 0)
+  const annualisedLeasedRent = measurable
+    .filter((l) => l.squareFeet && lastRate(l) > 0)
+    .reduce((a, l) => a + lastRate(l) * 12, 0)
 
   const stated = leases.map((l) => l.statedEscalationPct).filter((n): n is number => n !== undefined)
   const realised = leases.map((l) => realisedEscalationPct(l)).filter((n): n is number => n !== undefined)
@@ -254,6 +299,13 @@ export function propertyMetrics(
     avgStatedEscalationPct: stated.length ? stated.reduce((a, b) => a + b, 0) / stated.length : undefined,
     avgRealisedEscalationPct: realised.length ? realised.reduce((a, b) => a + b, 0) / realised.length : undefined,
     portfolioSharePct: portfolioCollected > 0 ? (collectedFinal / portfolioCollected) * 100 : 0,
+
+    squareFeet: sqFt,
+    leasedSquareFeet: leasedSqFt,
+    vacantSquareFeet: sqFt - leasedSqFt,
+    occupancyBySqFtPct: sqFt > 0 ? (leasedSqFt / sqFt) * 100 : 0,
+    rentPerSqFt: leasedSqFt > 0 ? annualisedLeasedRent / leasedSqFt : 0,
+    unmeasuredUnits: measurable.filter((l) => !l.squareFeet).length,
   }
 }
 

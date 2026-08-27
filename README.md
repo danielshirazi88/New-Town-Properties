@@ -25,6 +25,7 @@ There is no server and no database.
 |---|---|
 | **Executive dashboard** | Total income, net after tax, month-by-month income for the whole portfolio and for every property, what needs attention |
 | **Properties** | Every holding, with a rent roll, a month-by-month grid and an expense tab per property |
+| **Square footage** | Area, rent per square foot, empty space and what it costs |
 | **Year over year** | What moved between rent rolls — turnover, vacancy, rent growth, per property and per unit |
 | **Rent roll** | Every tenant in the portfolio — the 52 commercial suites and the 37 Apollo lots, filterable by segment. Exports to CSV |
 | **Lease expirations** | Sorted by urgency, from already-lapsed through to beyond a year |

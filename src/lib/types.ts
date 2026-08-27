@@ -10,8 +10,15 @@
  * inferred values.
  */
 
-/** A month cell in the rent roll: an amount, a vacancy, or a free-rent concession. */
-export type MonthCell = number | 'V' | 'FREE'
+/**
+ * A month cell in the rent roll.
+ *
+ * `NR` means "not reported" — a month the sheet simply does not cover, as in a
+ * part-year rent roll pulled mid-year. It is deliberately distinct from `V`:
+ * treating an unreported month as a vacancy would invent months of lost rent for
+ * every tenant in the portfolio.
+ */
+export type MonthCell = number | 'V' | 'FREE' | 'NR'
 
 /** How operating expenses are split between landlord and tenant. */
 export type LeaseType =
@@ -54,8 +61,17 @@ export interface Lease {
   /** The escalation percentage written in red on the sheet, if any. */
   statedEscalationPct?: number
   leaseType: LeaseType
-  /** Approximate rentable square feet, when known. */
+  /** Rentable square feet for the unit, where the sheet records it. */
   squareFeet?: number
+  /** Security deposit held against the unit. */
+  securityDeposit?: number
+  /** Renewal options as written, e.g. "5YR + 5YR" or "M to M". */
+  renewalOptions?: string
+  /**
+   * What the money is. Almost everything is rent; the exceptions matter because
+   * they should not be divided by square footage or counted as occupancy.
+   */
+  incomeType?: 'rent' | 'billboard' | 'parking' | 'note'
   notes?: string
 }
 
@@ -91,6 +107,8 @@ export interface Property {
    * building would silently rewrite history.
    */
   soldYear?: number
+  /** Exact disposal date, when known. */
+  soldDate?: string
   notes?: string
 }
 

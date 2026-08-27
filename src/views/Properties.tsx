@@ -8,6 +8,7 @@ import { ApolloRoll } from '../components/ApolloRoll'
 import { APOLLO_PARKING_RENT, APOLLO_REGISTRY_LABEL, APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../data/apollo'
 import type { PortfolioKpis } from '../lib/portfolio'
 import type { PropertyMetrics } from '../lib/finance'
+import type { MonthCell } from '../lib/types'
 
 export function Properties({
   k, expenses, selected, onSelect, onAddExpense,
@@ -46,6 +47,8 @@ export function Properties({
               <th className="num">Taxes</th>
               <th className="num">Net after tax</th>
               <th className="num">Tax load</th>
+              <th className="num">Sq ft</th>
+              <th className="num">Rent / sf</th>
               <th className="num">Expenses</th>
               <th className="num">Lapsed</th>
             </tr>
@@ -66,6 +69,8 @@ export function Properties({
                   <td className="num t-mute">{money(m.taxBill)}</td>
                   <td className="num">{money(m.netAfterTax)}</td>
                   <td className="num t-mute">{pct(m.taxLoadPct)}</td>
+                  <td className="num t-mute">{m.squareFeet > 0 ? m.squareFeet.toLocaleString() : '—'}</td>
+                  <td className="num">{m.rentPerSqFt > 0 ? `$${m.rentPerSqFt.toFixed(2)}` : <span className="t-mute">—</span>}</td>
                   <td className="num">{spend > 0 ? money(spend) : <span className="t-mute">—</span>}</td>
                   <td className="num">{m.expiredCount > 0 ? <span className="badge critical">{m.expiredCount}</span> : <span className="t-mute">—</span>}</td>
                 </tr>
@@ -81,6 +86,8 @@ export function Properties({
               <td className="num">{money(k.totalTaxes)}</td>
               <td className="num">{money(k.netAfterTax)}</td>
               <td className="num">{pct(k.taxLoadPct)}</td>
+              <td className="num">{k.totalSquareFeet > 0 ? k.totalSquareFeet.toLocaleString() : '—'}</td>
+              <td className="num">{k.rentPerSqFt > 0 ? `$${k.rentPerSqFt.toFixed(2)}` : '—'}</td>
               <td className="num">{money(expenses.reduce((a, e) => a + e.amount, 0))}</td>
               <td className="num">{num(k.expiredLeases.length)}</td>
             </tr>
@@ -195,6 +202,17 @@ function PropertyDetail({
             <Kpi label="Expiring within a year" value={num(m.expiringNext12)} note={money(m.rentAtRiskNext12)} warn={m.expiringNext12 > 0} />
             <Kpi label="Largest tenant" value={m.largestTenant ? pct(m.largestTenant.sharePct) : '—'} small note={m.largestTenant?.tenant} />
             <Kpi label="Vacancy & free rent" value={money(m.vacancyLoss + m.concessionLoss)} note={`${m.darkMonths} dark months`} />
+        {m.squareFeet > 0 && (
+          <>
+            <Kpi label="Rentable area" value={`${m.squareFeet.toLocaleString()} sf`}
+              note={`${m.leasedSquareFeet.toLocaleString()} sf let · ${pct(m.occupancyBySqFtPct, 0)}`} />
+            <Kpi accent label="Rent per sq ft" value={`$${m.rentPerSqFt.toFixed(2)}`} note="Annualised, let space only" />
+            {m.vacantSquareFeet > 0 && (
+              <Kpi label="Empty space" value={`${m.vacantSquareFeet.toLocaleString()} sf`}
+                note={`${money(m.vacantSquareFeet * m.rentPerSqFt)} a year at this property's rate`} warn />
+            )}
+          </>
+        )}
             <Kpi label="December monthly rent" value={money(m.exitMonthlyRent)} note={`${money(m.runRate)} annualised`} />
         {m.leases.length > 0 && (
           <Kpi label="Lease structure"
@@ -314,6 +332,7 @@ function PropertyDetail({
                             <td key={i} className="num" style={{ fontSize: 12 }}>
                               {cell === 'V' ? <span className="badge critical">V</span>
                                 : cell === 'FREE' ? <span className="badge warn">FREE</span>
+                                : cell === 'NR' ? <span className="t-mute">—</span>
                                 : money(cell)}
                             </td>
                           ))}
@@ -387,7 +406,7 @@ function leaseStructureLabel(types: string[]): string {
   return label[unique[0]] ?? 'Not stated'
 }
 
-function lastNumeric(months: readonly (number | 'V' | 'FREE')[]): number {
+function lastNumeric(months: readonly MonthCell[]): number {
   for (let i = months.length - 1; i >= 0; i--) {
     const m = months[i]
     if (typeof m === 'number') return m
