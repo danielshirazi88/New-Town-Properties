@@ -19,11 +19,19 @@ import { SignIn } from './components/SignIn'
 import type { TaxEntries } from './lib/taxes'
 import { YearOverYear } from './views/YearOverYear'
 import { SquareFootage } from './views/SquareFootage'
+import { Accounting } from './views/Accounting'
+import { Receivables } from './views/Receivables'
+import { SlowPayers } from './views/SlowPayers'
+import { TenantProfileView } from './views/TenantProfile'
+import type { TenantProfiles } from './lib/tenants'
+import { chargesForYear, payerRecordsFor, statusOf, trackedCharges,
+  type CollectionSettings, type Payment } from './lib/receivables'
 import { AVAILABLE_YEARS, CURRENT_YEAR, isPartYear, rentRoll, yearLabel } from './data/rentRolls'
 
 type Tab =
   | 'dashboard' | 'properties' | 'rentroll' | 'expirations'
   | 'escalations' | 'expenses' | 'taxes' | 'valuation' | 'apollo' | 'integrity' | 'yoy' | 'sqft'
+  | 'accounting' | 'receivables' | 'slowpayers' | 'tenant'
 
 export default function App() {
   const info = server()
@@ -31,13 +39,20 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [selectedProperty, setSelectedProperty] = useState<string | undefined>()
   const [expenseSeed, setExpenseSeed] = useState<string | undefined>()
+  const [selectedLease, setSelectedLease] = useState<string | undefined>()
+  // Where the tenant profile was opened from, so Back returns there.
+  const [tenantFrom, setTenantFrom] = useState<Tab>('properties')
   const [year, setYear] = useState<number>(CURRENT_YEAR)
 
   const overridesState = useStored<Overrides>(STORE_KEYS.overrides, EMPTY_OVERRIDES)
   const expensesState = useStored<Expense[]>(STORE_KEYS.expenses, [])
   const taxState = useStored<TaxEntries>(STORE_KEYS.taxes, {})
+  const profileState = useStored<TenantProfiles>(STORE_KEYS.profiles, {})
+  const paymentState = useStored<Payment[]>(STORE_KEYS.payments, [])
+  const collectionState = useStored<CollectionSettings>(STORE_KEYS.collection, {})
 
   const overrides = overridesState.value
+  const payments = paymentState.value
   const expenses = expensesState.value
   const setExpenses = expensesState.setValue
 
@@ -46,11 +61,28 @@ export default function App() {
   const k = useMemo(() => computeKpis(undefined, data), [data])
   const edits = editCount(overrides)
   const saving = overridesState.saving || expensesState.saving || taxState.saving
+    || profileState.saving || paymentState.saving || collectionState.saving
   const saveError = overridesState.error ?? expensesState.error ?? taxState.error
+    ?? profileState.error ?? paymentState.error ?? collectionState.error
+
+  // Badge counts for the collection tabs: unpaid months, and tenants running
+  // late. Both walk every charge, so they are computed once per data change
+  // rather than on every render.
+  const { openCount, slowCount } = useMemo(() => {
+    const charges = trackedCharges(
+      chargesForYear(k.properties.flatMap((p) => p.leases), k.fiscalYear),
+      collectionState.value.startPeriod,
+    )
+    return {
+      openCount: charges.filter((c) => statusOf(c, payments).balance > 0.005).length,
+      slowCount: payerRecordsFor(charges, payments)
+        .filter((r) => r.chargesSettled > 0 && (r.onTimeRatePct < 80 || r.monthsLate >= 2)).length,
+    }
+  }, [k, payments, collectionState.value.startPeriod])
 
   useEffect(() => {
     window.scrollTo({ top: 0 })
-  }, [tab, selectedProperty])
+  }, [tab, selectedProperty, selectedLease])
 
   // The server rejects a request once the session lapses; show the gate again
   // rather than letting saves fail silently.
@@ -67,6 +99,18 @@ export default function App() {
     setTab('properties')
   }
 
+  const goTenant = (leaseId: string) => {
+    setSelectedLease(leaseId)
+    setTenantFrom(tab === 'tenant' ? tenantFrom : tab)
+    setTab('tenant')
+  }
+
+  // The profile follows the lease, so a lease missing from the selected year has
+  // no profile to show — fall back rather than rendering an empty screen.
+  const selectedLeaseRecord = selectedLease
+    ? k.properties.flatMap((p) => p.leases).find((l) => l.id === selectedLease)
+    : undefined
+
   const nav: { id: Tab; label: string; count?: string; group: string }[] = [
     { id: 'dashboard', label: 'Executive dashboard', group: 'Overview' },
     { id: 'yoy', label: 'Year over year', count: String(AVAILABLE_YEARS.length), group: 'Overview' },
@@ -76,6 +120,9 @@ export default function App() {
     { id: 'escalations', label: 'Annual bumps', count: String(k.bumpsNotTaken.length), group: 'Tenants' },
     { id: 'apollo', label: 'Apollo park', count: String(k.apolloLots), group: 'Tenants' },
     { id: 'sqft', label: 'Square footage', count: k.totalSquareFeet ? `${Math.round(k.totalSquareFeet / 1000)}k` : undefined, group: 'Tenants' },
+    { id: 'accounting', label: 'Rent collection', count: paymentState.value.length ? String(paymentState.value.length) : undefined, group: 'Money' },
+    { id: 'receivables', label: 'Accounts receivable', count: openCount ? String(openCount) : undefined, group: 'Money' },
+    { id: 'slowpayers', label: 'Slow payers & late fees', count: slowCount ? String(slowCount) : undefined, group: 'Money' },
     { id: 'expenses', label: 'Expenses', count: expenses.length ? String(expenses.length) : undefined, group: 'Money' },
     { id: 'taxes', label: 'Taxes — Schedule E', group: 'Money' },
     { id: 'valuation', label: 'Valuation', group: 'Money' },
@@ -156,6 +203,8 @@ export default function App() {
             selected={selectedProperty}
             onSelect={setSelectedProperty}
             onAddExpense={(id) => { setExpenseSeed(id); setTab('expenses') }}
+            onTenant={goTenant}
+            profiles={profileState.value}
           />
         )}
         {tab === 'rentroll' && (
@@ -181,6 +230,59 @@ export default function App() {
         {tab === 'integrity' && <DataIntegrity k={k} onProperty={goProperty} />}
         {tab === 'yoy' && <YearOverYear overrides={overrides} onProperty={goProperty} />}
         {tab === 'sqft' && <SquareFootage k={k} onProperty={goProperty} />}
+        {tab === 'accounting' && (
+          <Accounting
+            k={k}
+            payments={payments}
+            setPayments={paymentState.setValue}
+            profiles={profileState.value}
+            onTenant={goTenant}
+            settings={collectionState.value}
+            setSettings={collectionState.setValue}
+          />
+        )}
+        {tab === 'receivables' && (
+          <Receivables
+            k={k}
+            payments={payments}
+            profiles={profileState.value}
+            settings={collectionState.value}
+            onTenant={goTenant}
+            onProperty={goProperty}
+          />
+        )}
+        {tab === 'slowpayers' && (
+          <SlowPayers
+            k={k}
+            payments={payments}
+            profiles={profileState.value}
+            settings={collectionState.value}
+            onTenant={goTenant}
+            onProperty={goProperty}
+          />
+        )}
+        {tab === 'tenant' && (
+          selectedLeaseRecord ? (
+            <TenantProfileView
+              k={k}
+              lease={selectedLeaseRecord}
+              profiles={profileState.value}
+              setProfiles={profileState.setValue}
+              payments={payments}
+              onBack={() => setTab(tenantFrom)}
+              onProperty={goProperty}
+            />
+          ) : (
+            <div className="callout">
+              <div className="callout-title">That tenant is not on the {year} rent roll</div>
+              <p>
+                Profiles are keyed to a lease, and this lease does not appear in the{' '}
+                {yearLabel(year)} sheet. Switch the rent roll year in the sidebar to reach it, or{' '}
+                <button className="link" onClick={() => setTab(tenantFrom)}>go back</button>.
+              </p>
+            </div>
+          )
+        )}
       </main>
     </div>
   )

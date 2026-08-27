@@ -31,6 +31,10 @@ There is no server and no database.
 | **Lease expirations** | Sorted by urgency, from already-lapsed through to beyond a year |
 | **Annual bumps** | Contracted escalation against what the rent actually did |
 | **Apollo park** | The trailer park — 37 lots plus 5 parking spaces, water recovery, base rent, full registry (also reachable from Properties) |
+| **Tenant profile** | Contact directory per tenant — phone, email, mailing address, preferred payment method (Zelle, ACH, check, cash, wire, or a custom one), plus that tenant's rent ledger and payment record. Reached by clicking a tenant on any property |
+| **Rent collection** | The month-by-month collection grid: every tenant against every month, green once settled. Record a payment on any cell, with a live late-fee reading |
+| **Accounts receivable** | What is outstanding, aged from the due date — by tenant, by property, by bucket |
+| **Slow payers & late fees** | Days to pay per tenant, fastest against slowest, and what the late fees come to — accrued and projected |
 | **Expenses** | Manual entry by property and category, with receipt/invoice upload |
 | **Valuation** | NOI and implied value across cap rates, on adjustable assumptions |
 | **Data integrity** | Reconciliation against the printed totals, and what the source documents don't contain |
@@ -130,6 +134,29 @@ build rather than quietly changing the dashboard.
 
 `src/data/properties.ts` holds the parcels and tax bills; `src/data/apollo.ts` holds the
 trailer-park registry.
+
+---
+
+## Rent collection, in the landlord's own terms
+
+Rent falls due on the 1st. A payment made any time through the **5th** is on time — no
+penalty. From the **6th**, **$15 a day** accrues, counted per calendar day, and it keeps
+accruing until the balance clears. A part payment does not stop the clock; the month has to
+be covered in full. Any month's fee can be waived when the payment is recorded, and waived
+fees are shown separately rather than dropped, so what was given up stays visible.
+
+**Days to pay (DTP)** runs from the 1st to the day the month was fully covered — paying on
+the 1st is 0 days, paying on the 5th is 4 days and still on time. DTP and on-time rate answer
+different questions and are kept apart.
+
+Two things to know before reading the receivables figures:
+
+- **A balance means "not recorded as paid", not "confirmed unpaid."** Nothing is imported
+  from a bank; a month is outstanding until someone marks it collected. With an empty ledger
+  the receivables screen shows the whole year as owed, which is why it says so in a banner.
+- **Set a tracking start month** on the Rent collection tab if you are starting from today
+  rather than backfilling. Months before it fall out of scope — not receivable, not late, not
+  counted — instead of reading as years of unpaid rent.
 
 ---
 

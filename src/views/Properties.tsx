@@ -9,19 +9,32 @@ import { APOLLO_PARKING_RENT, APOLLO_REGISTRY_LABEL, APOLLO_TENANTS, APOLLO_WATE
 import type { PortfolioKpis } from '../lib/portfolio'
 import type { PropertyMetrics } from '../lib/finance'
 import type { MonthCell } from '../lib/types'
+import { resolveProfile, type TenantProfiles } from '../lib/tenants'
 
 export function Properties({
-  k, expenses, selected, onSelect, onAddExpense,
+  k, expenses, selected, onSelect, onAddExpense, onTenant, profiles,
 }: {
   k: PortfolioKpis
   expenses: Expense[]
   selected?: string
   onSelect: (id?: string) => void
   onAddExpense: (propertyId: string) => void
+  onTenant: (leaseId: string) => void
+  profiles: TenantProfiles
 }) {
   const metrics = selected ? k.properties.find((p) => p.property.id === selected) : undefined
   if (metrics) {
-    return <PropertyDetail k={k} m={metrics} expenses={expenses} onBack={() => onSelect(undefined)} onAddExpense={onAddExpense} />
+    return (
+      <PropertyDetail
+        k={k}
+        m={metrics}
+        expenses={expenses}
+        onBack={() => onSelect(undefined)}
+        onAddExpense={onAddExpense}
+        onTenant={onTenant}
+        profiles={profiles}
+      />
+    )
   }
 
   const ranked = [...k.properties].sort((a, b) => b.collected - a.collected)
@@ -117,13 +130,15 @@ export function Properties({
 /* ── Detail ──────────────────────────────────────────────────────────────── */
 
 function PropertyDetail({
-  k, m, expenses, onBack, onAddExpense,
+  k, m, expenses, onBack, onAddExpense, onTenant, profiles,
 }: {
   k: PortfolioKpis
   m: PropertyMetrics
   expenses: Expense[]
   onBack: () => void
   onAddExpense: (id: string) => void
+  onTenant: (leaseId: string) => void
+  profiles: TenantProfiles
 }) {
   const [tab, setTab] = useState<'rent' | 'months' | 'expenses'>('rent')
 
@@ -259,7 +274,7 @@ function PropertyDetail({
                     <tr>
                       <th>Unit</th><th>Tenant</th><th>Lease term</th><th>Status</th>
                       <th className="num">Jan rent</th><th className="num">Dec rent</th>
-                      <th className="num">Bump</th><th className="num">2025 total</th><th>Contacts</th>
+                      <th className="num">Bump</th><th className="num">{k.fiscalYear} total</th><th>Contacts</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -267,10 +282,18 @@ function PropertyDetail({
                       const first = l.months.find((x) => !isDark(x))
                       const realised = realisedEscalationPct(l)
                       return (
-                        <tr key={l.id}>
+                        <tr
+                          key={l.id}
+                          className="clickable"
+                          onClick={() => onTenant(l.id)}
+                          title="Open the tenant profile"
+                        >
                           <td className="t-mono">{l.unit}</td>
                           <td>
-                            <div className="t-strong">{l.tenant}</div>
+                            <div className="t-strong">
+                              {resolveProfile(l.id, l.contacts, profiles).displayName || l.tenant}
+                              <span className="t-mute" style={{ fontSize: 11, marginLeft: 6 }}>profile ›</span>
+                            </div>
                             {l.notes && <div className="t-mute" style={{ fontSize: 11.5, maxWidth: 320 }}>{l.notes}</div>}
                           </td>
                           <td className="t-mono t-mute t-nowrap" style={{ fontSize: 12 }}>

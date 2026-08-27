@@ -1,0 +1,299 @@
+import { cellAmount, isUnreported } from './finance'
+import type { Lease } from './types'
+import type { PaymentMethodId } from './tenants'
+
+/**
+ * Rent collection: what is owed, what came in, and how late it was.
+ *
+ * The rules are the landlord's own. Rent falls due on the 1st. There is a grace
+ * period through the 5th, so a payment made any time on the 5th is on time. From
+ * the 6th a late fee of $15 a day accrues, counted per calendar day, and it keeps
+ * accruing on an unpaid balance until the balance clears.
+ */
+
+export const RENT_DUE_DAY = 1
+/** Payment on or before this day of the month carries no penalty. */
+export const GRACE_THROUGH_DAY = 5
+export const LATE_FEE_PER_DAY = 15
+
+export interface Payment {
+  id: string
+  leaseId: string
+  /** The month the payment settles, as `YYYY-MM`. */
+  period: string
+  amount: number
+  /** Date the money arrived, ISO `YYYY-MM-DD`. */
+  paidOn: string
+  method?: PaymentMethodId
+  customMethodLabel?: string
+  reference?: string
+  note?: string
+  /** True when the landlord has waived the late fee on this month. */
+  waiveLateFee?: boolean
+  recordedBy?: string
+  recordedAt: string
+}
+
+export interface RentCharge {
+  id: string
+  leaseId: string
+  propertyId: string
+  tenant: string
+  unit: string
+  year: number
+  /** 0-indexed, matching the month cells. */
+  month: number
+  period: string
+  amountDue: number
+  dueDate: Date
+  /** End of the grace period — the last day a payment is on time. */
+  graceThrough: Date
+}
+
+export const periodOf = (year: number, month: number): string =>
+  `${year}-${String(month + 1).padStart(2, '0')}`
+
+const MS_PER_DAY = 86_400_000
+const atMidnight = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+const wholeDaysBetween = (from: Date, to: Date): number =>
+  Math.floor((atMidnight(to).getTime() - atMidnight(from).getTime()) / MS_PER_DAY)
+
+/**
+ * Every month a lease actually owes rent.
+ *
+ * Only months with a rent figure generate a charge. A vacant month owes nothing,
+ * a free-rent month owes nothing by agreement, and a month the sheet does not
+ * cover is not a debt — it is simply unknown.
+ */
+export function chargesForLease(lease: Lease, year: number): RentCharge[] {
+  const out: RentCharge[] = []
+  lease.months.forEach((cell, month) => {
+    if (isUnreported(cell)) return
+    const amount = cellAmount(cell)
+    if (amount <= 0) return
+    out.push({
+      id: `${lease.id}:${periodOf(year, month)}`,
+      leaseId: lease.id,
+      propertyId: lease.propertyId,
+      tenant: lease.tenant,
+      unit: lease.unit,
+      year,
+      month,
+      period: periodOf(year, month),
+      amountDue: amount,
+      dueDate: new Date(year, month, RENT_DUE_DAY),
+      graceThrough: new Date(year, month, GRACE_THROUGH_DAY),
+    })
+  })
+  return out
+}
+
+export const chargesForYear = (leases: Lease[], year: number): RentCharge[] =>
+  leases.flatMap((l) => chargesForLease(l, year))
+
+export type ChargeState = 'paid' | 'partial' | 'due' | 'late'
+
+export interface ChargeStatus {
+  charge: RentCharge
+  payments: Payment[]
+  paid: number
+  balance: number
+  state: ChargeState
+  /**
+   * Days from the due date to the day the balance cleared. Paying on the 1st is
+   * zero. Undefined while the balance is still outstanding.
+   */
+  daysToPay?: number
+  /** Days past the grace period. Accrues to today while a balance is open. */
+  lateDays: number
+  lateFee: number
+  lateFeeWaived: boolean
+  /** The date the balance reached zero, if it has. */
+  settledOn?: Date
+  /**
+   * The moment this status was evaluated. Carried on the result so anything
+   * derived from it — aging, in particular — measures against the same date
+   * rather than quietly substituting today's.
+   */
+  asOf: Date
+}
+
+/**
+ * Resolve one month's rent against the payments made toward it.
+ *
+ * Payments are applied oldest first, and the charge is only settled once the
+ * full amount is covered — a partial payment stops nothing from accruing, which
+ * is how a late fee actually works.
+ */
+export function statusOf(
+  charge: RentCharge,
+  payments: Payment[],
+  asOf: Date = new Date(),
+): ChargeStatus {
+  const mine = payments
+    .filter((p) => p.leaseId === charge.leaseId && p.period === charge.period)
+    .sort((a, b) => a.paidOn.localeCompare(b.paidOn))
+
+  const paid = mine.reduce((a, p) => a + p.amount, 0)
+  const balance = Math.max(0, charge.amountDue - paid)
+
+  // The date the running total first covered the charge.
+  let settledOn: Date | undefined
+  let running = 0
+  for (const p of mine) {
+    running += p.amount
+    if (running >= charge.amountDue - 0.005) {
+      settledOn = new Date(`${p.paidOn}T00:00:00`)
+      break
+    }
+  }
+
+  const waived = mine.some((p) => p.waiveLateFee)
+  const lateFrom = settledOn ?? asOf
+  const lateDays = balance > 0.005 || settledOn
+    ? Math.max(0, wholeDaysBetween(charge.graceThrough, lateFrom))
+    : 0
+
+  const state: ChargeState =
+    balance <= 0.005 ? 'paid'
+      : paid > 0.005 ? 'partial'
+      : wholeDaysBetween(charge.graceThrough, asOf) > 0 ? 'late'
+      : 'due'
+
+  return {
+    charge,
+    payments: mine,
+    paid,
+    balance,
+    state,
+    daysToPay: settledOn ? wholeDaysBetween(charge.dueDate, settledOn) : undefined,
+    lateDays,
+    lateFee: waived ? 0 : lateDays * LATE_FEE_PER_DAY,
+    lateFeeWaived: waived,
+    settledOn,
+    asOf,
+  }
+}
+
+/** Aging buckets, measured from the due date. */
+export type AgingBucket = 'current' | '1-30' | '31-60' | '61-90' | '90+'
+
+export function agingOf(status: ChargeStatus, asOf: Date = status.asOf): AgingBucket {
+  if (status.balance <= 0.005) return 'current'
+  const days = wholeDaysBetween(status.charge.dueDate, asOf)
+  if (days <= 0) return 'current'
+  if (days <= 30) return '1-30'
+  if (days <= 60) return '31-60'
+  if (days <= 90) return '61-90'
+  return '90+'
+}
+
+export interface PayerRecord {
+  leaseId: string
+  tenant: string
+  unit: string
+  propertyId: string
+  chargesSettled: number
+  chargesOpen: number
+  /** Mean days to pay across settled months. Lower is better. */
+  averageDaysToPay?: number
+  fastestDaysToPay?: number
+  slowestDaysToPay?: number
+  /** Share of settled months paid within the grace period. */
+  onTimeRatePct: number
+  monthsLate: number
+  totalLateFees: number
+  totalBilled: number
+  totalPaid: number
+  balance: number
+  /** A 0–100 read on reliability: on-time record, weighted down by lateness. */
+  reliabilityScore: number
+}
+
+const GRACE_DAYS = GRACE_THROUGH_DAY - RENT_DUE_DAY
+
+/**
+ * A tenant's payment record across a year.
+ *
+ * Reliability blends how often they pay within grace with how far past it they
+ * go when they don't — a tenant who is one day late every month is a different
+ * problem from one who is thirty days late twice.
+ */
+export function payerRecordsFor(
+  charges: RentCharge[],
+  payments: Payment[],
+  asOf: Date = new Date(),
+): PayerRecord[] {
+  const byLease = new Map<string, RentCharge[]>()
+  for (const c of charges) {
+    const list = byLease.get(c.leaseId) ?? []
+    list.push(c)
+    byLease.set(c.leaseId, list)
+  }
+
+  const out: PayerRecord[] = []
+  for (const [leaseId, list] of byLease) {
+    const statuses = list.map((c) => statusOf(c, payments, asOf))
+    const settled = statuses.filter((s) => s.daysToPay !== undefined)
+    const dtp = settled.map((s) => s.daysToPay!)
+    const onTime = settled.filter((s) => s.daysToPay! <= GRACE_DAYS).length
+    const monthsLate = statuses.filter((s) => s.lateDays > 0).length
+
+    const onTimeRatePct = settled.length ? (onTime / settled.length) * 100 : 0
+    const avg = dtp.length ? dtp.reduce((a, b) => a + b, 0) / dtp.length : undefined
+    // Start from the on-time rate, then dock for how far past grace they run.
+    const overage = avg === undefined ? 0 : Math.max(0, avg - GRACE_DAYS)
+    const reliabilityScore = settled.length
+      ? Math.max(0, Math.min(100, onTimeRatePct - Math.min(40, overage * 2)))
+      : 0
+
+    out.push({
+      leaseId,
+      tenant: list[0].tenant,
+      unit: list[0].unit,
+      propertyId: list[0].propertyId,
+      chargesSettled: settled.length,
+      chargesOpen: statuses.filter((s) => s.balance > 0.005).length,
+      averageDaysToPay: avg,
+      fastestDaysToPay: dtp.length ? Math.min(...dtp) : undefined,
+      slowestDaysToPay: dtp.length ? Math.max(...dtp) : undefined,
+      onTimeRatePct,
+      monthsLate,
+      totalLateFees: statuses.reduce((a, s) => a + s.lateFee, 0),
+      totalBilled: list.reduce((a, c) => a + c.amountDue, 0),
+      totalPaid: statuses.reduce((a, s) => a + s.paid, 0),
+      balance: statuses.reduce((a, s) => a + s.balance, 0),
+      reliabilityScore,
+    })
+  }
+  return out
+}
+
+/**
+ * When collection tracking begins.
+ *
+ * Rent rolls go back years, but nobody is going to retro-enter every payment
+ * ever made. Without a start date every historic month reads as unpaid, and the
+ * receivables screen would claim millions owed and years of late fees that were
+ * in fact collected on time. Months before the start are simply out of scope:
+ * not receivable, not late, not counted.
+ */
+export interface CollectionSettings {
+  /** First month tracked, as `YYYY-MM`. Unset means the whole rent roll. */
+  startPeriod?: string
+}
+
+export const inTrackingWindow = (charge: RentCharge, start?: string): boolean =>
+  !start || charge.period >= start
+
+export const trackedCharges = (charges: RentCharge[], start?: string): RentCharge[] =>
+  start ? charges.filter((c) => c.period >= start) : charges
+
+/** What a late fee would come to if a balance stays unpaid for another n days. */
+export const projectedLateFee = (currentLateDays: number, extraDays: number): number =>
+  (currentLateDays + extraDays) * LATE_FEE_PER_DAY
+
+export const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]

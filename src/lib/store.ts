@@ -198,4 +198,7 @@ export const STORE_KEYS = {
   overrides: 'overrides.v1',
   expenses: 'expenses.v1',
   taxes: 'taxes.v1',
+  profiles: 'tenantProfiles.v1',
+  payments: 'payments.v1',
+  collection: 'collection.v1',
 } as const
