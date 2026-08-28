@@ -194,7 +194,14 @@ export default function App() {
           </div>
         )}
         {tab === 'dashboard' && (
-          <Dashboard k={k} expenses={expenses} onProperty={goProperty} onNav={(t) => setTab(t as Tab)} />
+          <Dashboard
+            k={k}
+            expenses={expenses}
+            payments={payments}
+            collection={collectionState.value}
+            onProperty={goProperty}
+            onNav={(t) => setTab(t as Tab)}
+          />
         )}
         {tab === 'properties' && (
           <Properties
@@ -211,6 +218,7 @@ export default function App() {
           <RentRoll
             k={k}
             onProperty={goProperty}
+            onTenant={goTenant}
             apolloTenants={data.apolloTenants}
             overrides={overrides}
             setOverrides={overridesState.setValue}

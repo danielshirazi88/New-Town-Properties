@@ -63,6 +63,13 @@ export interface Lease {
   leaseType: LeaseType
   /** Rentable square feet for the unit, where the sheet records it. */
   squareFeet?: number
+  /**
+   * Set when the area came from a different year's sheet than this one. A suite
+   * does not change size between years, so an area stated on any rent roll
+   * applies to every other — but the figure should never look like it was
+   * printed on a sheet that never stated it.
+   */
+  squareFeetFromYear?: number
   /** Security deposit held against the unit. */
   securityDeposit?: number
   /** Renewal options as written, e.g. "5YR + 5YR" or "M to M". */

@@ -106,3 +106,40 @@ export function propertyActiveIn(propertyId: string, year: number): boolean {
   if (propertyId === 'apollo') return roll.apolloGross > 0
   return roll.leases.some((l) => l.propertyId === propertyId)
 }
+
+/* ── Unit areas across years ────────────────────────────────────────────── */
+
+/**
+ * Square footage, carried between rent rolls.
+ *
+ * Only the 2026 sheet states unit areas; the 2024 and 2025 sheets have none. But
+ * a suite does not change size between years — the area is a fact about the
+ * building, not about the year — so an area stated on any sheet is applied to
+ * the same unit on every other. Each carried figure records the sheet it came
+ * from, so nothing appears to be measured on a document that never stated it.
+ *
+ * Units are matched on property and unit label. Where a sheet has merged two
+ * bays into one line (Plaza #2's 1683 and 1685 became 1683–1685 in 2026) the
+ * labels no longer line up and no area is carried, which is the right outcome:
+ * splitting a combined figure would be a guess.
+ */
+export interface UnitArea {
+  squareFeet: number
+  /** The rent roll year the figure was printed on. */
+  sourceYear: number
+}
+
+const AREA_BY_UNIT: Map<string, UnitArea> = (() => {
+  const m = new Map<string, UnitArea>()
+  // Newest sheet first, so the most recent measurement wins.
+  for (const year of [...AVAILABLE_YEARS].reverse()) {
+    for (const l of RENT_ROLLS[year].leases) {
+      const key = `${l.propertyId}|${l.unit}`
+      if (l.squareFeet && !m.has(key)) m.set(key, { squareFeet: l.squareFeet, sourceYear: year })
+    }
+  }
+  return m
+})()
+
+export const areaForUnit = (propertyId: string, unit: string): UnitArea | undefined =>
+  AREA_BY_UNIT.get(`${propertyId}|${unit}`)

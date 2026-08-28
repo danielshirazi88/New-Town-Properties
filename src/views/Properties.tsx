@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { MonthlyAreaChart, RankedBars } from '../components/charts'
 import { Card, Empty, ExpiryBadge, Kpi } from '../components/ui'
-import { MONTHS, cellAmount, collected, isDark, realisedEscalationPct } from '../lib/finance'
+import { MONTHS, cellAmount, collected, isDark, realisedEscalationPct, rentPerSqFt } from '../lib/finance'
 import { dateLabel, money, num, pct, signedPct } from '../lib/format'
 import { rollup, type Expense } from '../lib/expenses'
 import { ApolloRoll } from '../components/ApolloRoll'
@@ -142,6 +142,29 @@ function PropertyDetail({
 }) {
   const [tab, setTab] = useState<'rent' | 'months' | 'expenses'>('rent')
 
+  // Where a unit's area came from, and which units have none on any sheet.
+  const areaNote = (() => {
+    const carried = m.leases.filter((l) => l.squareFeetFromYear)
+    const missing = m.leases.filter((l) => !l.squareFeet && (l.incomeType ?? 'rent') === 'rent')
+    const parts: string[] = []
+    if (carried.length > 0) {
+      const years = [...new Set(carried.map((l) => l.squareFeetFromYear!))].sort()
+      parts.push(
+        `* Area for ${carried.length} ${carried.length === 1 ? 'unit is' : 'units is'} from the `
+        + `${years.join(' and ')} rent ${years.length === 1 ? 'roll' : 'rolls'} — the ${k.fiscalYear} `
+        + 'sheet does not state square footage. A suite does not change size between years.',
+      )
+    }
+    if (missing.length > 0) {
+      parts.push(
+        `No rent roll states an area for ${missing.length === 1 ? 'unit' : 'units'} `
+        + `${missing.map((l) => l.unit).join(', ')}, so rent per square foot cannot be worked out `
+        + 'for ' + (missing.length === 1 ? 'it' : 'them') + '.',
+      )
+    }
+    return parts.join(' ')
+  })()
+
   const apolloStats = (() => {
     const paying = APOLLO_TENANTS.filter((t) => !t.isParking)
     const parking = APOLLO_TENANTS.filter((t) => t.isParking)
@@ -273,6 +296,7 @@ function PropertyDetail({
                   <thead>
                     <tr>
                       <th>Unit</th><th>Tenant</th><th>Lease term</th><th>Status</th>
+                      <th className="num">Sq ft</th><th className="num">Rent / sf</th>
                       <th className="num">Jan rent</th><th className="num">Dec rent</th>
                       <th className="num">Bump</th><th className="num">{k.fiscalYear} total</th><th>Contacts</th>
                     </tr>
@@ -300,6 +324,27 @@ function PropertyDetail({
                             {dateLabel(l.leaseStart)}<br />{dateLabel(l.leaseEnd)}
                           </td>
                           <td><ExpiryBadge lease={l} asOf={k.asOf} /></td>
+                          <td className="num">
+                            {l.squareFeet ? (
+                              <span
+                                className={l.squareFeetFromYear ? 't-mute' : undefined}
+                                title={l.squareFeetFromYear
+                                  ? `Area stated on the ${l.squareFeetFromYear} rent roll; ${k.fiscalYear} does not state it`
+                                  : undefined}
+                              >
+                                {l.squareFeet.toLocaleString()}
+                                {l.squareFeetFromYear ? '*' : ''}
+                              </span>
+                            ) : <span className="t-mute">—</span>}
+                          </td>
+                          <td className="num">
+                            {(() => {
+                              const psf = rentPerSqFt(l)
+                              return psf === undefined
+                                ? <span className="t-mute">—</span>
+                                : <span>${psf.toFixed(2)}</span>
+                            })()}
+                          </td>
                           <td className="num">{first !== undefined ? money(cellAmount(first)) : <span className="t-mute">—</span>}</td>
                           <td className="num">{money(m.leases.length ? lastNumeric(l.months) : 0)}</td>
                           <td className="num">
@@ -324,12 +369,23 @@ function PropertyDetail({
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td className="label" colSpan={7}>{m.leases.length} units</td>
+                      <td className="label" colSpan={4}>{m.leases.length} units</td>
+                      <td className="num">
+                        {(() => {
+                          const total = m.leases.reduce((a, l) => a + (l.squareFeet ?? 0), 0)
+                          return total > 0 ? total.toLocaleString() : '—'
+                        })()}
+                      </td>
+                      <td className="num">
+                        {m.rentPerSqFt === undefined ? '—' : `$${m.rentPerSqFt.toFixed(2)}`}
+                      </td>
+                      <td colSpan={3} />
                       <td className="num">{money(m.collected)}</td>
                       <td />
                     </tr>
                   </tfoot>
                 </table>
+                {areaNote && <p className="t-mute" style={{ fontSize: 12, marginTop: 8 }}>{areaNote}</p>}
               </div>
             )
         )}

@@ -23,10 +23,11 @@ type SortKey = 'tenant' | 'property' | 'rent' | 'end' | 'bump' | 'tenure'
 type Segment = 'all' | 'commercial' | 'apollo'
 
 export function RentRoll({
-  k, onProperty, apolloTenants: APOLLO_TENANTS, overrides, setOverrides, originalLeases,
+  k, onProperty, onTenant, apolloTenants: APOLLO_TENANTS, overrides, setOverrides, originalLeases,
 }: {
   k: PortfolioKpis
   onProperty: (id: string) => void
+  onTenant: (leaseId: string) => void
   apolloTenants: ApolloTenant[]
   overrides: Overrides
   setOverrides: (next: Overrides) => void
@@ -179,7 +180,13 @@ export function RentRoll({
                   return (
                     <tr key={l.id} className="clickable" onClick={() => onProperty(l.propertyId)}>
                       <td>
-                        <div className="t-strong">{l.tenant}</div>
+                        <button
+                          className="link t-strong"
+                          title="Open the tenant profile"
+                          onClick={(e) => { e.stopPropagation(); onTenant(l.id) }}
+                        >
+                          {l.tenant}
+                        </button>
                         {dark > 0 && <span className="badge warn" style={{ marginTop: 3 }}>{dark} dark {dark === 1 ? 'month' : 'months'}</span>}
                       </td>
                       <td className="t-mute t-nowrap">{propName(l.propertyId)}</td>

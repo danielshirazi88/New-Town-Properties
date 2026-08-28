@@ -1,6 +1,6 @@
 import { APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../data/apollo'
 import { PROPERTIES } from '../data/properties'
-import { CURRENT_YEAR, rentRoll } from '../data/rentRolls'
+import { CURRENT_YEAR, areaForUnit, rentRoll } from '../data/rentRolls'
 import {
   applyApolloOverrides, applyLeaseOverrides, applyPropertyOverrides,
   EMPTY_OVERRIDES, type Overrides,
@@ -180,9 +180,17 @@ export function resolveData(
       }
     })
 
+  // A unit's area is a fact about the building, so an area stated on any sheet
+  // is carried onto the same unit in every year — tagged with where it came from.
+  const withArea = roll.leases.map((l) => {
+    if (l.squareFeet) return l
+    const area = areaForUnit(l.propertyId, l.unit)
+    return area ? { ...l, squareFeet: area.squareFeet, squareFeetFromYear: area.sourceYear } : l
+  })
+
   return {
     properties: applyPropertyOverrides(forYear, overrides),
-    leases: applyLeaseOverrides(roll.leases, overrides),
+    leases: applyLeaseOverrides(withArea, overrides),
     apolloTenants: applyApolloOverrides(APOLLO_TENANTS, overrides),
     year,
   }

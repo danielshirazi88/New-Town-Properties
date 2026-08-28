@@ -5,12 +5,18 @@ import { money, moneyShort, num, pct, signedPct } from '../lib/format'
 import type { PortfolioKpis } from '../lib/portfolio'
 import type { Expense } from '../lib/expenses'
 import { rollup } from '../lib/expenses'
+import {
+  MONTH_NAMES, chargesForYear, statusOf, trackedCharges,
+  type CollectionSettings, type Payment,
+} from '../lib/receivables'
 
 export function Dashboard({
-  k, expenses, onProperty, onNav,
+  k, expenses, payments, collection, onProperty, onNav,
 }: {
   k: PortfolioKpis
   expenses: Expense[]
+  payments: Payment[]
+  collection: CollectionSettings
   onProperty: (id: string) => void
   onNav: (tab: string) => void
 }) {
@@ -19,6 +25,35 @@ export function Dashboard({
     .map((p) => ({ id: p.property.id, name: p.property.name, values: p.monthly, total: p.collected }))
 
   const ranked = [...k.properties].sort((a, b) => b.collected - a.collected)
+
+  // Collection, for the month a rent cheque would actually be arriving. When the
+  // rent roll is a past year there is no "this month", so fall back to the last
+  // month it bills for rather than showing an empty panel.
+  const month = (() => {
+    const charges = trackedCharges(
+      chargesForYear(k.properties.flatMap((p) => p.leases), k.fiscalYear),
+      collection.startPeriod,
+    )
+    if (charges.length === 0) return undefined
+    const today = k.asOf
+    const target = today.getFullYear() === k.fiscalYear
+      ? today.getMonth()
+      : Math.max(...charges.map((c) => c.month))
+    const forMonth = charges.filter((c) => c.month === target)
+    if (forMonth.length === 0) return undefined
+    const statuses = forMonth.map((c) => statusOf(c, payments, today))
+    return {
+      index: target,
+      isCurrent: today.getFullYear() === k.fiscalYear,
+      billed: statuses.reduce((a, s) => a + s.charge.amountDue, 0),
+      paid: statuses.reduce((a, s) => a + s.paid, 0),
+      outstanding: statuses.reduce((a, s) => a + s.balance, 0),
+      lateFees: statuses.reduce((a, s) => a + s.lateFee, 0),
+      settled: statuses.filter((s) => s.state === 'paid').length,
+      late: statuses.filter((s) => s.state === 'late').length,
+      count: statuses.length,
+    }
+  })()
   const exp = rollup(expenses)
   const netOfExpenses = k.netAfterTax - exp.operating
 
@@ -53,6 +88,46 @@ export function Dashboard({
         <Kpi label="Forward run rate" value={money(k.forwardRunRate)}
           note={`December rent annualised · ${signedPct(k.runRateVsActualPct)} vs 2025`} />
       </div>
+
+      {/* ── Rent collection, this month ──────────────────────────────────── */}
+      {month && (
+        <div className="section">
+          <div className="section-title">
+            Rent collection — {MONTH_NAMES[month.index]} {k.fiscalYear}
+            <span className="hint">
+              {month.isCurrent ? 'the current month' : 'the last month this rent roll bills for'}
+            </span>
+            <span style={{ marginLeft: 'auto' }}>
+              <button className="btn sm" onClick={() => onNav('accounting')}>Record a payment</button>
+            </span>
+          </div>
+          {payments.length === 0 ? (
+            <div className="callout">
+              <div className="callout-title">Collection tracking is set up but nothing has been recorded</div>
+              <p>
+                {money(month.billed)} of rent is billed across {num(month.count)} tenants for{' '}
+                {MONTH_NAMES[month.index]}. Mark each one as it comes in and this panel, the
+                receivables ledger and the payer analytics all fill in from those entries.
+              </p>
+            </div>
+          ) : (
+            <div className="kpi-grid">
+              <Kpi accent label="Billed this month" value={money(month.billed)}
+                note={`${num(month.count)} tenants`} />
+              <Kpi accent label="Collected" value={money(month.paid)}
+                note={month.billed > 0 ? `${pct((month.paid / month.billed) * 100)} of billed` : undefined} />
+              <Kpi label="Still outstanding" value={money(month.outstanding)}
+                note={`${num(month.count - month.settled)} of ${num(month.count)} unsettled`}
+                warn={month.outstanding > 0} />
+              <Kpi label="Past grace" value={num(month.late)}
+                note={month.lateFees > 0 ? `${money(month.lateFees)} in late fees` : 'No late fees'}
+                warn={month.late > 0} />
+              <Kpi label="Paid in full" value={`${num(month.settled)} of ${num(month.count)}`}
+                note="Tenants settled for the month" />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── What needs attention ─────────────────────────────────────────── */}
       <div className="section">
