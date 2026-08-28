@@ -394,3 +394,68 @@ describe('the default year', () => {
     expect(yearLabel(2026)).toContain('through August')
   })
 })
+
+describe('square footage across years', () => {
+  const leasesFor = (year: number) => resolveData(undefined, year).leases
+  const unit = (year: number, propertyId: string, label: string) =>
+    leasesFor(year).find((l) => l.propertyId === propertyId && l.unit === label)
+
+  it('carries an area onto a year whose sheet does not state one', () => {
+    // Only the 2026 sheet prints square footage; a suite does not change size.
+    const l = unit(2025, 'mannheim-plaza', '1505 A&B')!
+    expect(l.squareFeet).toBe(1980)
+    expect(l.squareFeetFromYear).toBe(2026)
+  })
+
+  it('leaves the area untagged on the sheet that actually states it', () => {
+    const l = unit(2026, 'mannheim-plaza', '1505 A&B')!
+    expect(l.squareFeet).toBe(1980)
+    expect(l.squareFeetFromYear).toBeUndefined()
+  })
+
+  it('follows a unit that was relabelled when the tenant changed', () => {
+    // 1401 N 25th Ave labels each bay by its occupant: Autotech Garage became
+    // Mechanic became Fast Cars Group, all one 2,000 sf unit.
+    expect(unit(2024, 'ave-25-1401', 'Autotech Garage')!.squareFeet).toBe(2000)
+    expect(unit(2025, 'ave-25-1401', 'Mechanic')!.squareFeet).toBe(2000)
+    expect(unit(2026, 'ave-25-1401', 'Fast Cars Group')!.squareFeet).toBe(2000)
+
+    expect(unit(2025, 'ave-25-1401', 'Body Shop')!.squareFeet).toBe(5900)
+    expect(unit(2026, 'ave-25-1401', 'KGZ Collision')!.squareFeet).toBe(5900)
+  })
+
+  it('follows the Nu River condo from its unnamed early listing', () => {
+    expect(unit(2025, 'florida', 'Florida')!.squareFeet).toBe(600)
+  })
+
+  it('refuses to split a merged unit rather than guessing', () => {
+    // 1683 and 1685 became a single 1683–1685 line at 2,200 sf in 2026. Halving
+    // that would be an invention, so both stay unmeasured.
+    expect(unit(2025, 'plaza-2', '1683')!.squareFeet).toBeUndefined()
+    expect(unit(2025, 'plaza-2', '1685')!.squareFeet).toBeUndefined()
+    expect(unit(2026, 'plaza-2', '1683–1685')!.squareFeet).toBe(2200)
+  })
+
+  it('leaves West Plaza unmeasured, because no sheet states its areas', () => {
+    const wp = leasesFor(2025).filter((l) => l.propertyId === 'west-plaza')
+    expect(wp.length).toBeGreaterThan(0)
+    expect(wp.every((l) => l.squareFeet === undefined)).toBe(true)
+  })
+
+  it('classifies the billboard and garage on every year, not just 2026', () => {
+    for (const year of [2024, 2025, 2026]) {
+      expect(unit(year, 'playpen-1538', '1538 Billboard')?.incomeType).toBe('billboard')
+      expect(unit(year, 'n-43rd-1643', '1643 N 43rd Garage')?.incomeType).toBe('parking')
+    }
+  })
+
+  it('does not change any income total by carrying areas', () => {
+    // Area and classification are facts about the unit, not about the money.
+    for (const year of [2024, 2025, 2026]) {
+      const total = resolveData(undefined, year).leases
+        .reduce((a, l) => a + l.statedAnnualTotal, 0)
+      const source = rentRoll(year).leases.reduce((a, l) => a + l.statedAnnualTotal, 0)
+      expect(total).toBeCloseTo(source, 2)
+    }
+  })
+})

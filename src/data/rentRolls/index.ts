@@ -129,12 +129,50 @@ export interface UnitArea {
   sourceYear: number
 }
 
+
+/**
+ * The same physical unit written under different labels from year to year.
+ *
+ * Most units carry a suite number that never changes. But at 1401 N 25th Avenue
+ * the sheets label each bay by whoever occupies it, so a new tenant renames the
+ * unit, and Nu River Landing was written simply as "Florida" before the condo
+ * number was recorded. Matching on the label alone would treat those as separate
+ * units and lose the area.
+ *
+ * Every group here is one the source documents themselves identify — each has a
+ * note on the 2026 sheet naming the unit's earlier titles. Nothing is grouped on
+ * a guess: Plaza #2's 1683 and 1685 were merged into a single 1683–1685 line in
+ * 2026 and are deliberately absent, because splitting that 2,200 sf back into
+ * two would be an invention rather than a rename.
+ */
+const UNIT_ALIASES: { propertyId: string; labels: string[] }[] = [
+  // The auto-service row labels each bay by its occupant, so a re-let renames it.
+  { propertyId: 'ave-25-1401', labels: ['Autotech Garage', 'Mechanic', 'Fast Cars Group'] },
+  { propertyId: 'ave-25-1401', labels: ['Body Shop', 'KGZ Collision'] },
+  // The condo was recorded only as "Florida" until the 2026 sheet gave its number.
+  { propertyId: 'florida', labels: ['Florida', 'Unit 1918'] },
+]
+
+/** Every label for a unit resolves to the first one in its group. */
+const CANONICAL_UNIT: Map<string, string> = (() => {
+  const m = new Map<string, string>()
+  for (const { propertyId, labels } of UNIT_ALIASES) {
+    for (const label of labels) m.set(`${propertyId}|${label}`, `${propertyId}|${labels[0]}`)
+  }
+  return m
+})()
+
+const unitKey = (propertyId: string, unit: string): string => {
+  const raw = `${propertyId}|${unit}`
+  return CANONICAL_UNIT.get(raw) ?? raw
+}
+
 const AREA_BY_UNIT: Map<string, UnitArea> = (() => {
   const m = new Map<string, UnitArea>()
   // Newest sheet first, so the most recent measurement wins.
   for (const year of [...AVAILABLE_YEARS].reverse()) {
     for (const l of RENT_ROLLS[year].leases) {
-      const key = `${l.propertyId}|${l.unit}`
+      const key = unitKey(l.propertyId, l.unit)
       if (l.squareFeet && !m.has(key)) m.set(key, { squareFeet: l.squareFeet, sourceYear: year })
     }
   }
@@ -142,4 +180,29 @@ const AREA_BY_UNIT: Map<string, UnitArea> = (() => {
 })()
 
 export const areaForUnit = (propertyId: string, unit: string): UnitArea | undefined =>
-  AREA_BY_UNIT.get(`${propertyId}|${unit}`)
+  AREA_BY_UNIT.get(unitKey(propertyId, unit))
+
+/**
+ * What kind of income a unit produces, carried the same way as its area.
+ *
+ * A billboard ground lease and a garage rental are what they are in every year,
+ * but only the 2026 sheet was transcribed with that classification. Carrying it
+ * back keeps a billboard out of the square-footage and occupancy figures on the
+ * earlier years too, where dividing it by an area it does not have would be
+ * meaningless.
+ */
+const INCOME_TYPE_BY_UNIT: Map<string, NonNullable<Lease['incomeType']>> = (() => {
+  const m = new Map<string, NonNullable<Lease['incomeType']>>()
+  for (const year of [...AVAILABLE_YEARS].reverse()) {
+    for (const l of RENT_ROLLS[year].leases) {
+      const key = unitKey(l.propertyId, l.unit)
+      if (l.incomeType && l.incomeType !== 'rent' && !m.has(key)) m.set(key, l.incomeType)
+    }
+  }
+  return m
+})()
+
+export const incomeTypeForUnit = (
+  propertyId: string,
+  unit: string,
+): NonNullable<Lease['incomeType']> | undefined => INCOME_TYPE_BY_UNIT.get(unitKey(propertyId, unit))

@@ -369,7 +369,9 @@ function PropertyDetail({
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td className="label" colSpan={4}>{m.leases.length} units</td>
+                      <td className="label" colSpan={4}>
+                        {m.leases.length} {m.leases.length === 1 ? 'unit' : 'units'}
+                      </td>
                       <td className="num">
                         {(() => {
                           const total = m.leases.reduce((a, l) => a + (l.squareFeet ?? 0), 0)
