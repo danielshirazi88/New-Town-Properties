@@ -1,5 +1,5 @@
 import { Card, Kpi } from '../components/ui'
-import { collected } from '../lib/finance'
+import { collected, rentPerSqFt } from '../lib/finance'
 import { money, num } from '../lib/format'
 import { KNOWN_SOURCE_VARIANCES } from '../data/leases'
 import type { PortfolioKpis } from '../lib/portfolio'
@@ -23,6 +23,29 @@ export function DataIntegrity({ k, onProperty }: { k: PortfolioKpis; onProperty:
     .filter((r) => Math.abs(r.computed - r.stated) > 0.005)
 
   const grossDelta = k.commercialGross - SHEET_TOTALS.commercialGross
+
+  /**
+   * Rents that sit far off the portfolio's own price per square foot.
+   *
+   * A rate several times the median is much more likely to be a wrong area than
+   * a genuinely extraordinary rent, so this is a prompt to check the figure
+   * rather than a claim that it is wrong. Measured against the median rather
+   * than the mean so a single bad row cannot drag the yardstick with it.
+   */
+  const psfOutliers = (() => {
+    const rated = all
+      .filter((l) => (l.incomeType ?? 'rent') === 'rent')
+      .map((l) => ({ lease: l, psf: rentPerSqFt(l) }))
+      .filter((r): r is { lease: typeof r.lease; psf: number } => r.psf !== undefined && r.psf > 0)
+    if (rated.length < 8) return { median: undefined, rows: [] }
+    const sorted = rated.map((r) => r.psf).sort((a, b) => a - b)
+    const mid = Math.floor(sorted.length / 2)
+    const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+    const rows = rated
+      .filter((r) => r.psf > median * 3 || r.psf < median / 3)
+      .sort((a, b) => Math.abs(Math.log(b.psf / median)) - Math.abs(Math.log(a.psf / median)))
+    return { median, rows }
+  })()
 
   const gaps = [
     { label: 'Square footage', count: k.unmeasuredUnits, of: k.unitCount,
@@ -111,6 +134,52 @@ export function DataIntegrity({ k, onProperty }: { k: PortfolioKpis; onProperty:
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {psfOutliers.rows.length > 0 && psfOutliers.median !== undefined && (
+        <div className="section">
+          <div className="section-title">
+            Figures worth checking
+            <span className="hint">
+              rents more than three times off the portfolio median of ${psfOutliers.median.toFixed(2)} a square foot
+            </span>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tenant</th><th>Property</th><th>Unit</th>
+                  <th className="num">Sq ft</th><th className="num">Rent / sf</th>
+                  <th className="num">vs median</th><th>What to check</th>
+                </tr>
+              </thead>
+              <tbody>
+                {psfOutliers.rows.map(({ lease: l, psf }) => {
+                  const ratio = psf / psfOutliers.median!
+                  return (
+                    <tr key={l.id} className="clickable" onClick={() => onProperty(l.propertyId)}>
+                      <td className="t-strong">{l.tenant}</td>
+                      <td className="t-mute">{propName(l.propertyId)}</td>
+                      <td className="t-mono t-mute">{l.unit}</td>
+                      <td className="num">{l.squareFeet?.toLocaleString()}</td>
+                      <td className="num t-red t-strong">${psf.toFixed(2)}</td>
+                      <td className="num">{ratio >= 1 ? `${ratio.toFixed(1)}× high` : `${(1 / ratio).toFixed(1)}× low`}</td>
+                      <td className="t-mute">
+                        {ratio >= 1
+                          ? `${l.squareFeet?.toLocaleString()} sq ft against ${money(collected(l))} of rent. An area this small for the rent is more likely a wrong figure on the sheet than a rate ${ratio.toFixed(1)} times the portfolio's.`
+                          : `${money(collected(l))} across ${l.squareFeet?.toLocaleString()} sq ft. Either the area is overstated or the unit is let well under the portfolio's rate.`}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="t-mute" style={{ fontSize: 12, marginTop: 8 }}>
+            Nothing here has been changed. These are the rows where the arithmetic works but the
+            inputs look wrong — worth a glance at the lease before any of them is quoted.
+          </p>
         </div>
       )}
 

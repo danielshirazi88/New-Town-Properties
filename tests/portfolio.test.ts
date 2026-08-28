@@ -459,3 +459,30 @@ describe('square footage across years', () => {
     }
   })
 })
+
+describe('rent per square foot outliers', () => {
+  // The same median-based rule the data-integrity view applies.
+  const outliers = (year: number) => {
+    const rated = resolveData(undefined, year).leases
+      .filter((l) => (l.incomeType ?? 'rent') === 'rent')
+      .map((l) => ({ lease: l, psf: rentPerSqFt(l) }))
+      .filter((r): r is { lease: (typeof r)['lease']; psf: number } => r.psf !== undefined && r.psf > 0)
+    const sorted = rated.map((r) => r.psf).sort((a, b) => a - b)
+    const mid = Math.floor(sorted.length / 2)
+    const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+    return { median, rows: rated.filter((r) => r.psf > median * 3 || r.psf < median / 3) }
+  }
+
+  it('flags Cilantro, whose 600 sq ft cannot support its rent', () => {
+    const { rows, median } = outliers(2026)
+    expect(median).toBeGreaterThan(20)
+    expect(rows.map((r) => r.lease.tenant)).toContain('Cilantro')
+  })
+
+  it('does not flag the ordinary spread of the portfolio', () => {
+    // A handful of genuine outliers is a signal; a long list would mean the rule
+    // is miscalibrated and the screen would be ignored.
+    expect(outliers(2026).rows.length).toBeLessThanOrEqual(3)
+    expect(outliers(2025).rows.length).toBeLessThanOrEqual(3)
+  })
+})
