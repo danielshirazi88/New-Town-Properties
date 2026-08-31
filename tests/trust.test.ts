@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  EMPTY_TRUST_STATE, annualisedGrowth, editCountFor, resolveTrust, trustTotals, yearsHeld,
-  type TrustHolding, type TrustState,
+  EMPTY_TRUST_STATE, annualisedGrowth, daysToBalloon, editCountFor, impliedNoteRate, resolveTrust,
+  trustTotals, yearsHeld, type TrustHolding, type TrustState,
 } from '../src/lib/trust'
 import { TRUST_HOLDINGS, TRUST_PURCHASE_TOTAL } from '../src/data/trust'
 import { PROPERTIES } from '../src/data/properties'
@@ -32,8 +32,8 @@ describe('the transcribed schedule', () => {
   it('links every rental to a property the app knows, bar none', () => {
     const ids = new Set(PROPERTIES.map((p) => p.id))
     const rentals = TRUST_HOLDINGS.filter((h) => h.use === 'rental')
-    // Fourteen let, plus the Chicago condo, is every property the rent roll has.
-    expect(rentals).toHaveLength(14)
+    // Thirteen still let — West Plaza became a note when it sold.
+    expect(rentals).toHaveLength(13)
     for (const h of rentals) {
       expect(h.propertyId, h.address).toBeDefined()
       expect(ids.has(h.propertyId!), `${h.address} → ${h.propertyId}`).toBe(true)
@@ -61,6 +61,50 @@ describe('the transcribed schedule', () => {
     const foster = TRUST_HOLDINGS.find((h) => h.address.startsWith('129 E Foster'))!
     expect(foster.purchasePrice).toBe(2_100_000)
     expect(foster.needsConfirmation).toBeTruthy()
+  })
+})
+
+describe('the West Plaza seller note', () => {
+  const wp = TRUST_HOLDINGS.find((h) => h.address.startsWith('1901-25 S Mannheim'))!
+
+  it('is held as a note, not as a building', () => {
+    // The schedule was drawn up on 27 April; the sale closed on the 30th.
+    expect(wp.use).toBe('note')
+    expect(wp.sellerNote).toMatchObject({
+      soldDate: '2026-04-30',
+      balance: 1_000_000,
+      monthlyPayment: 6140.87,
+      maturityDate: '2029-04-30',
+    })
+  })
+
+  it('is worth the balance outstanding, never the capitalised building', () => {
+    // Capitalising a building the trust no longer owns would value it twice: once
+    // as property and once as the note it was exchanged for.
+    const [r] = resolveTrust([wp], EMPTY_TRUST_STATE, () => 4_000_000)
+    expect(r.estimatedValue).toBe(1_000_000)
+    expect(r.valueFromPortfolio).toBe(false)
+  })
+
+  it('still lets a typed figure win, for a note bought down or written off', () => {
+    const [r] = resolveTrust([wp], state({ edits: { [wp.id]: { estimatedValue: 850_000 } } }),
+      () => 4_000_000)
+    expect(r.estimatedValue).toBe(850_000)
+  })
+
+  it('counts the balloon down from today', () => {
+    expect(daysToBalloon(wp.sellerNote!, new Date('2026-08-31T12:00:00'))).toBe(973)
+    expect(daysToBalloon(wp.sellerNote!, new Date('2029-05-01T12:00:00'))).toBe(-1)
+  })
+
+  it('implies a rate the payment and balance can be sanity-checked against', () => {
+    // $6,140.87 a month on $1,000,000 is 7.37% of the balance a year — plausible
+    // for seller financing, and the figure to challenge if it were not.
+    expect(impliedNoteRate(wp.sellerNote!)).toBeCloseTo(7.37, 1)
+  })
+
+  it('keeps the payment the rent roll confirms and flags the one it does not', () => {
+    expect(wp.needsConfirmation).toContain('6,000')
   })
 })
 

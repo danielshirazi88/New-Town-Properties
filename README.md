@@ -176,6 +176,14 @@ same way rent-roll overrides work — so a correction never destroys what the
 document says, every hand edit is visible as one, and any of them can be
 reverted.
 
+**West Plaza was sold on seller financing** on 30 April 2026, three days after
+the schedule was drawn up, so the schedule still lists it as a building. What
+the trust holds is the buyer's note: $1,000,000 outstanding, $6,140.87 a month,
+balloon due 30 April 2029. It is valued at the balance rather than at what the
+building would capitalise at — otherwise the estate would count the property and
+the note it was exchanged for, and a receivable that can default would be
+recorded as bricks that can only go vacant.
+
 A rental's estimated value is its own net income capitalised at the cap rate set
 on the Valuation screen. Type a figure over it and yours wins: an appraisal
 knows more than a cap rate does. **Real estate lives only here** — the asset

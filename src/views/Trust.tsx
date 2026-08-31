@@ -1,15 +1,16 @@
 import { useMemo, useState } from 'react'
 import { Card, Empty, Kpi } from '../components/ui'
 import { DonutChart, RankedBars } from '../components/charts'
-import { dateLabel, money, num, signedPct } from '../lib/format'
+import { dateLabel, money, moneyExact, num, signedPct } from '../lib/format'
 import {
-  USE_LABEL, annualisedGrowth, editCountFor, newHoldingId, resolveTrust, trustTotals, yearsHeld,
+  USE_LABEL, annualisedGrowth, daysToBalloon, editCountFor, impliedNoteRate, newHoldingId,
+  resolveTrust, trustTotals, yearsHeld,
   type HoldingUse, type ResolvedHolding, type TrustEdit, type TrustHolding, type TrustState,
 } from '../lib/trust'
 import { TRUST_HOLDINGS, TRUST_NAME, TRUST_SCHEDULE_DATE } from '../data/trust'
 import type { PortfolioKpis } from '../lib/portfolio'
 
-const USES: HoldingUse[] = ['rental', 'personal', 'resale']
+const USES: HoldingUse[] = ['rental', 'personal', 'resale', 'note']
 
 const n = (v: string): number | undefined => {
   const x = Number(v.replace(/[^0-9.-]/g, ''))
@@ -87,6 +88,8 @@ export function Trust({
     setEditing({ ...fresh, valueFromPortfolio: false, editedFields: [], isAdded: true })
   }
 
+  const notes = rows.filter((r) => r.sellerNote)
+
   const gain = totals.comparableCost > 0
     ? ((totals.comparableValue - totals.comparableCost) / totals.comparableCost) * 100
     : undefined
@@ -121,6 +124,10 @@ export function Trust({
           note={`${num(totals.byUse.personal.count)} held · ${money(totals.byUse.personal.purchase)} paid`} />
         <Kpi label="Held for resale" value={money(totals.byUse.resale.purchase)}
           note={`${num(totals.byUse.resale.count)} — at cost until it is valued`} />
+        <Kpi label="Notes receivable" value={money(totals.byUse.note.value)}
+          note={notes.length
+            ? `${num(notes.length)} sold on seller financing`
+            : 'None'} />
       </div>
 
       {flagged.length > 0 && (
@@ -136,6 +143,61 @@ export function Trust({
             </p>
           ))}
         </div>
+      )}
+
+      {notes.length > 0 && (
+        <Card
+          title="Sold on seller financing"
+          hint="what the trust holds is the buyer's note, not the building"
+        >
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Property</th><th>Buyer</th><th>Sold</th>
+                  <th className="num">Balance</th><th className="num">Monthly</th>
+                  <th className="num">Rate implied</th><th>Balloon due</th><th className="num">Paid for</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notes.map((r) => {
+                  const sn = r.sellerNote!
+                  const days = daysToBalloon(sn, k.asOf)
+                  const rate = impliedNoteRate(sn)
+                  return (
+                    <tr key={r.id}>
+                      <td className="t-strong">{r.address.split(',')[0]}</td>
+                      <td className="t-mute">{sn.buyer ?? '—'}</td>
+                      <td className="t-mono t-mute" style={{ fontSize: 12 }}>{dateLabel(sn.soldDate)}</td>
+                      <td className="num t-strong">{money(sn.balance)}</td>
+                      <td className="num">{sn.monthlyPayment ? moneyExact(sn.monthlyPayment) : '—'}</td>
+                      <td className="num t-mute">{rate === undefined ? '—' : `${rate.toFixed(2)}%`}</td>
+                      <td>
+                        <span className="t-mono" style={{ fontSize: 12 }}>{dateLabel(sn.maturityDate)}</span>
+                        {days !== undefined && (
+                          <div className={`${days < 180 ? 't-red' : 't-mute'}`} style={{ fontSize: 11 }}>
+                            {days < 0
+                              ? `${num(Math.abs(days))} days overdue`
+                              : `in ${num(days)} days`}
+                          </div>
+                        )}
+                      </td>
+                      <td className="num t-mute">{r.purchasePrice ? money(r.purchasePrice) : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="t-mute" style={{ fontSize: 12, marginTop: 8 }}>
+            A seller-financed note is worth the balance outstanding, not what the building would
+            capitalise at — so these are valued at their balance and kept out of the rental estate.
+            The rate shown is the annual payment against the balance: a sanity check on the terms,
+            not the note's stated interest rate.
+            {notes.some((r) => r.sellerNote?.note) && ' '}
+            {notes.map((r) => r.sellerNote?.note).filter(Boolean).join(' ')}
+          </p>
+        </Card>
       )}
 
       <div className="grid-2">

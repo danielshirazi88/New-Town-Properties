@@ -237,29 +237,34 @@ export interface AssetTotals {
 export interface RealEstateContribution {
   rental: number
   personal: number
+  /** Seller-financed notes — a receivable, not a building. */
+  notes: number
   debt: number
   /** Holdings with no value from any source, counted as zero. */
   unvalued: number
 }
 
 export function realEstateTotals(rows: {
-  use: 'rental' | 'personal' | 'resale'
+  use: 'rental' | 'personal' | 'resale' | 'note'
   estimatedValue?: number
   debt?: number
 }[]): RealEstateContribution {
   let rental = 0
   let personal = 0
+  let notes = 0
   let debt = 0
   let unvalued = 0
   for (const r of rows) {
     if (r.estimatedValue === undefined) unvalued += 1
-    // A holding kept for resale is not personal use, but it is not let either;
-    // it sits with the personal side rather than inflating the rental estate.
-    if (r.use === 'rental') rental += r.estimatedValue ?? 0
-    else personal += r.estimatedValue ?? 0
+    const v = r.estimatedValue ?? 0
+    // A note is a receivable rather than property, and a holding kept for resale
+    // is not let either — neither belongs in the rental estate.
+    if (r.use === 'rental') rental += v
+    else if (r.use === 'note') notes += v
+    else personal += v
     debt += r.debt ?? 0
   }
-  return { rental, personal, debt, unvalued }
+  return { rental, personal, notes, debt, unvalued }
 }
 
 /**
@@ -274,7 +279,7 @@ export function realEstateTotals(rows: {
 export function assetTotals(r: AssetRegister, property: RealEstateContribution): AssetTotals {
   const investments = r.investments.reduce((a, i) => a + i.balance, 0)
   const vehicles = r.vehicles.reduce((a, v) => a + vehicleValue(v), 0)
-  const realEstate = property.rental + property.personal
+  const realEstate = property.rental + property.personal + property.notes
   const gross = realEstate + investments + vehicles
 
   return {

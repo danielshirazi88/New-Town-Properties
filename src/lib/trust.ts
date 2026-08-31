@@ -8,12 +8,32 @@
  */
 
 /** How a holding earns, or doesn't. */
-export type HoldingUse = 'rental' | 'personal' | 'resale'
+export type HoldingUse = 'rental' | 'personal' | 'resale' | 'note'
 
 export const USE_LABEL: Record<HoldingUse, string> = {
   rental: 'Rental',
   personal: 'Personal',
   resale: 'Held for resale',
+  note: 'Seller-financed note',
+}
+
+/**
+ * A property sold on seller financing.
+ *
+ * What the trust holds afterwards is not the building — it is the buyer's
+ * promise to pay. That is worth the balance outstanding, not whatever the
+ * building would capitalise at, and the distinction is the difference between
+ * an asset that can go vacant and one that can default.
+ */
+export interface SellerNote {
+  soldDate: string
+  buyer?: string
+  /** Principal outstanding. */
+  balance: number
+  monthlyPayment?: number
+  /** When the balloon falls due. */
+  maturityDate?: string
+  note?: string
 }
 
 export interface TrustHolding {
@@ -35,6 +55,8 @@ export interface TrustHolding {
    * the number rather than resolved silently.
    */
   needsConfirmation?: string
+  /** Present once the property has been sold on seller financing. */
+  sellerNote?: SellerNote
 }
 
 /** A hand edit. Every field the schedule carries can be corrected. */
@@ -112,8 +134,13 @@ export function resolveTrust(
       note: e.note ?? h.note,
     }
 
-    const fromPortfolio = merged.propertyId ? portfolioValue(merged.propertyId) : undefined
-    const estimatedValue = e.estimatedValue ?? fromPortfolio
+    // A property sold on seller financing is worth the balance outstanding.
+    // Capitalising its old net income would value a building the trust no longer
+    // owns, and would double-count against the note it was exchanged for.
+    const fromPortfolio = merged.sellerNote || !merged.propertyId
+      ? undefined
+      : portfolioValue(merged.propertyId)
+    const estimatedValue = e.estimatedValue ?? fromPortfolio ?? merged.sellerNote?.balance
 
     return {
       ...merged,
@@ -158,6 +185,7 @@ export function trustTotals(rows: ResolvedHolding[]): TrustTotals {
     rental: { count: 0, purchase: 0, value: 0 },
     personal: { count: 0, purchase: 0, value: 0 },
     resale: { count: 0, purchase: 0, value: 0 },
+    note: { count: 0, purchase: 0, value: 0 },
   }
 
   let purchaseTotal = 0
@@ -217,4 +245,26 @@ export function annualisedGrowth(h: ResolvedHolding, asOf: Date = new Date()): n
   const years = yearsHeld(h, asOf)
   if (!h.purchasePrice || !h.estimatedValue || years === undefined || years < 1) return undefined
   return ((h.estimatedValue / h.purchasePrice) ** (1 / years) - 1) * 100
+}
+
+/** Days until a note's balloon falls due. Negative once it has passed. */
+export function daysToBalloon(n: SellerNote, asOf: Date = new Date()): number | undefined {
+  if (!n.maturityDate) return undefined
+  const due = new Date(`${n.maturityDate}T00:00:00`)
+  if (Number.isNaN(due.getTime())) return undefined
+  const day = 86_400_000
+  const atMidnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  return Math.round((atMidnight(due).getTime() - atMidnight(asOf).getTime()) / day)
+}
+
+/**
+ * The rate a note is running at, implied by its payment and balance.
+ *
+ * Only meaningful as a sanity check on the terms — a payment that does not even
+ * cover the interest means the balance is growing, which is worth knowing before
+ * the balloon arrives.
+ */
+export function impliedNoteRate(n: SellerNote): number | undefined {
+  if (!n.monthlyPayment || n.balance <= 0) return undefined
+  return (n.monthlyPayment * 12 / n.balance) * 100
 }

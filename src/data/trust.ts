@@ -116,9 +116,23 @@ export const TRUST_HOLDINGS: TrustHolding[] = [
     id: 't13', seq: 13, purchaseDate: '2017-03-16',
     address: '1901-25 S Mannheim Rd, Westchester, IL',
     propertyType: 'Strip mall (West Plaza)',
-    purchasePrice: 975000, use: 'rental', propertyId: 'west-plaza',
-    note: 'Sold 30 April 2026 — three days after this schedule was drawn up, so it is still '
-      + 'listed here.',
+    purchasePrice: 975000, use: 'note', propertyId: 'west-plaza',
+    // The schedule lists it as a building because it was drawn up on 27 April,
+    // three days before the sale closed. What the trust holds now is the note.
+    sellerNote: {
+      soldDate: '2026-04-30',
+      buyer: 'Anthony Castaldo',
+      balance: 1000000,
+      monthlyPayment: 6140.87,
+      maturityDate: '2029-04-30',
+      note: 'Payments of $6,140.87 a month run from June 2026 on the rent roll, which carries '
+        + 'them to May 2029; the schedule notes the balloon as due by 30 April 2029.',
+    },
+    note: 'Sold on seller financing 30 April 2026, three days after this schedule was drawn up. '
+      + 'The trust holds the buyer\'s note, not the building.',
+    needsConfirmation: 'A second figure, "$6,000…", is written beside the $6,140.87 payment and '
+      + 'it is not clear what it refers to — a rounded payment, an interest-only portion, or '
+      + 'something else. Only the $6,140.87 the rent roll confirms is recorded.',
   },
   {
     id: 't14', seq: 14, purchaseDate: '2019-11-15',
