@@ -53,6 +53,9 @@ export interface PortfolioKpis {
   janToDecGrowthPct: number
   /** Months of the selected sheet that carry data. */
   reportedMonths: number
+  /** Where the Apollo figure came from, and its caveats if it was derived. */
+  apolloBasis: 'printed' | 'derived'
+  apolloNote?: string
   exitMonthlyRent: number
   forwardRunRate: number
   runRateVsActualPct: number
@@ -214,7 +217,7 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
   const apolloGross = apolloProp.statedGross
   const grossCollected = commercialGross + apolloGross
 
-  const props = PROPS.map((p) => propertyMetrics(p, ALL_LEASES, grossCollected, asOf))
+  const props = PROPS.map((p) => propertyMetrics(p, ALL_LEASES, grossCollected, asOf, reportedMonths))
   // Reconciliation covers only what the 2025 rent-roll workbook covers. A holding
   // that exists solely on the tax return is browsable and taxable but is not part
   // of the figure that is claimed to tie to that document.
@@ -223,8 +226,12 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
   )
 
   const monthly = monthlySeries(commercialLeases)
-  const apolloPerMonth = apolloGross / 12
-  const monthlyWithApollo = monthly.map((m) => m + apolloPerMonth)
+  // Apollo is one figure for the months its source covers, so it spreads across
+  // those months rather than across twelve. On a part year, dividing by twelve
+  // would understate every month that did happen and credit the park with income
+  // in months nobody has reported yet.
+  const apolloPerMonth = apolloGross / reportedMonths
+  const monthlyWithApollo = monthly.map((m, i) => m + (i < reportedMonths ? apolloPerMonth : 0))
 
   const bestIdx = monthly.indexOf(Math.max(...monthly))
   const worstIdx = monthly.indexOf(Math.min(...monthly))
@@ -233,7 +240,7 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
   const totalTaxes = commercialTaxes + apolloProp.taxBill
 
   const exitMonthlyRent = commercialLeases.reduce((a, l) => a + exitRate(l), 0)
-  const forwardRunRate = exitMonthlyRent * 12 + apolloGross
+  const forwardRunRate = exitMonthlyRent * 12 + apolloPerMonth * 12
 
   const withinMonths = (l: Lease, lo: number, hi: number) => {
     const m = monthsRemaining(l, asOf)
@@ -325,6 +332,8 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
     worstMonth: { index: worstIdx, amount: monthly[worstIdx] },
     avgMonth: commercialGross / 12,
     reportedMonths,
+    apolloBasis: rentRoll(data.year).apolloBasis,
+    apolloNote: rentRoll(data.year).apolloNote,
     janToDecGrowthPct: (() => {
       // First reported month to last reported month. Running to December on a
       // part year compares January against a month the sheet does not cover and

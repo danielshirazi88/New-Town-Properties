@@ -578,10 +578,76 @@ describe('a part year measured honestly', () => {
     expect(k.reportedMonths).toBe(12)
   })
 
-  it('reports Apollo as absent from 2026 rather than as zero income', () => {
-    // The park is not on the 2026 sheet. That is a gap in the document, not a
-    // year with no rent, and the dashboard has to say which.
-    expect(computeKpis(undefined, resolveData(undefined, 2026)).apolloGross).toBe(0)
-    expect(computeKpis(undefined, resolveData(undefined, 2025)).apolloGross).toBeGreaterThan(300_000)
+  it('no longer reports the park as zero income on 2026', () => {
+    // It used to read $0, which said "earned nothing" when it meant "not in the
+    // document". The registry now fills it, flagged as a derivation.
+    const k = computeKpis(undefined, resolveData(undefined, 2026))
+    expect(k.apolloGross).toBeGreaterThan(200_000)
+    expect(k.apolloBasis).toBe('derived')
+  })
+})
+
+describe("Apollo's part-year income", () => {
+  it('takes 2026 from the July 2026 registry, and says it is derived', () => {
+    // The 2026 rent roll leaves the park out; the registry is itself a 2026
+    // document, so it is the better source — but it is a derivation and the
+    // app has to be able to say so.
+    const roll = rentRoll(2026)
+    expect(roll.apolloBasis).toBe('derived')
+    expect(roll.apolloNote).toBeTruthy()
+    // 37 lots and 5 parking spaces at the registry's rates, over eight months.
+    expect(roll.apolloGross).toBe(33_100 * 8)
+  })
+
+  it('leaves the years whose sheets state a figure alone', () => {
+    expect(rentRoll(2025).apolloBasis).toBe('printed')
+    expect(rentRoll(2025).apolloGross).toBe(378_870)
+    expect(rentRoll(2024).apolloBasis).toBe('printed')
+  })
+
+  it('spreads the park across the months its source covers, not across twelve', () => {
+    // Dividing eight months of income by twelve would understate every month
+    // that happened and credit the park with rent in months nobody has reported.
+    const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2026))
+    const commercial = k.monthly
+    expect(k.monthlyWithApollo[0] - commercial[0]).toBeCloseTo(33_100, 2)
+    expect(k.monthlyWithApollo[7] - commercial[7]).toBeCloseTo(33_100, 2)
+    // September onward is unreported for both.
+    expect(k.monthlyWithApollo[8] - commercial[8]).toBe(0)
+  })
+
+  it('still divides a full year by twelve', () => {
+    const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2025))
+    expect(k.monthlyWithApollo[11] - k.monthly[11]).toBeCloseTo(378_870 / 12, 2)
+  })
+
+  it('annualises the park in the forward run rate rather than adding a part year', () => {
+    // Adding eight months of park income to twelve months of rent would drag the
+    // run rate down by a third of Apollo.
+    const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2026))
+    expect(k.forwardRunRate).toBeGreaterThan(33_100 * 12)
+  })
+})
+
+describe('a property reported as one annual figure', () => {
+  it('spreads Apollo across the months the sheet covers', () => {
+    const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2026))
+    const apollo = k.properties.find((p) => p.property.id === 'apollo')!
+    expect(apollo.monthly.slice(0, 8).every((m) => Math.abs(m - 33_100) < 1)).toBe(true)
+    // Nothing in the months nobody has reported.
+    expect(apollo.monthly.slice(8)).toEqual([0, 0, 0, 0])
+    expect(apollo.collected).toBe(33_100 * 8)
+  })
+
+  it('still spreads a full year across twelve', () => {
+    const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2025))
+    const apollo = k.properties.find((p) => p.property.id === 'apollo')!
+    expect(apollo.monthly.every((m) => Math.abs(m - 378_870 / 12) < 1)).toBe(true)
+  })
+
+  it('makes the park visible on the dashboard grid rather than reading as zero', () => {
+    // It used to show $0 for the year while the headline total included it.
+    const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2026))
+    expect(k.properties.find((p) => p.property.id === 'apollo')!.collected).toBeGreaterThan(0)
   })
 })

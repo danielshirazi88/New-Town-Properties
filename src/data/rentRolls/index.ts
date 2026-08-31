@@ -18,8 +18,18 @@ export interface RentRollYear {
   leases: Lease[]
   /** Property tax applied to that year's income, and which year's bill it is. */
   tax: Record<string, { bill: number; billYear: number }>
-  /** Apollo is reported as one annual figure on every sheet so far. */
+  /**
+   * Apollo's income for the months this sheet covers. One figure, because every
+   * sheet so far reports the park as a single total rather than month by month.
+   */
   apolloGross: number
+  /**
+   * Where that figure came from. `printed` means the rent roll states it;
+   * `derived` means it was worked out from the tenant registry because the sheet
+   * leaves the park out, and it carries the assumptions in `apolloNote`.
+   */
+  apolloBasis: 'printed' | 'derived'
+  apolloNote?: string
   statedTotals: {
     commercialGross: number
     commercialTaxes: number
@@ -42,6 +52,7 @@ export const RENT_ROLLS: Record<number, RentRollYear> = {
     leases: LEASES_2024,
     tax: TAX_2024,
     apolloGross: APOLLO_GROSS_2024,
+    apolloBasis: 'printed',
     statedTotals: STATED_TOTALS_2024,
     variances: KNOWN_VARIANCES_2024,
     monthsReported: 12,
@@ -52,6 +63,7 @@ export const RENT_ROLLS: Record<number, RentRollYear> = {
     leases: LEASES_2025,
     tax: TAX_2025,
     apolloGross: APOLLO_GROSS_2025,
+    apolloBasis: 'printed',
     statedTotals: STATED_TOTALS_2025,
     variances: KNOWN_VARIANCES_2025,
     monthsReported: 12,
@@ -62,6 +74,11 @@ export const RENT_ROLLS: Record<number, RentRollYear> = {
     leases: LEASES_2026,
     tax: TAX_2026,
     apolloGross: APOLLO_GROSS_2026,
+    apolloBasis: 'derived',
+    apolloNote: 'The 2026 rent roll leaves Apollo out. This is the July 2026 tenant registry\'s '
+      + 'monthly billing across the eight months the sheet covers — a fair estimate, but it '
+      + 'assumes the lot rents did not move earlier in the year. Replace it with the park\'s '
+      + 'actual 2026 figure when there is one.',
     statedTotals: STATED_TOTALS_2026,
     variances: KNOWN_VARIANCES_2026,
     monthsReported: MONTHS_REPORTED_2026,

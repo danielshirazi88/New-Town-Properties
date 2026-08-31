@@ -91,18 +91,16 @@ export function Dashboard({
           note={`Exit rent annualised · ${signedPct(k.runRateVsActualPct)} vs ${k.fiscalYear}`} />
       </div>
 
-      {k.apolloGross === 0 && (
+      {k.apolloBasis === 'derived' && (
         <div className="callout" style={{ marginBottom: 18 }}>
           <div className="callout-title">
-            The {k.fiscalYear} sheet carries no Apollo figure, so the totals above are
-            commercial only
+            Apollo's {k.fiscalYear} income is worked out from the tenant registry, not read off
+            the rent roll
           </div>
           <p>
-            Apollo Mobile Home Court brought in {money(378870)} in 2025 across 37 lots and 5
-            parking spaces, and nothing suggests it stopped — the {k.fiscalYear} rent roll simply
-            does not include it. Every gross and net figure on this page is short by roughly that
-            much until the park's {k.fiscalYear} income is added. The lot-by-lot registry is still
-            on the Apollo park tab.
+            {k.apolloNote} It comes to {money(k.apolloGross)} across the {k.reportedMonths} months
+            the sheet covers, and it is included in every total on this page — so the figures are
+            complete, but that part of them is an estimate rather than a transcription.
           </p>
         </div>
       )}
@@ -192,11 +190,10 @@ export function Dashboard({
             </div>
             <div className="stack">
               <span className="kpi-label">Apollo</span>
-              {k.apolloGross > 0 ? (
-                <span className="t-mono t-mute">{money(k.apolloGross / 12)}/mo assumed flat</span>
-              ) : (
-                <span className="t-mono t-red">not on the {k.fiscalYear} sheet</span>
-              )}
+              <span className="t-mono t-mute">
+                {money(k.apolloGross / k.reportedMonths)}/mo
+                {k.apolloBasis === 'derived' ? ' from the registry' : ' assumed flat'}
+              </span>
             </div>
           </div>
         </Card>

@@ -228,6 +228,8 @@ export function propertyMetrics(
   allLeases: Lease[],
   portfolioCollected: number,
   asOf: Date = AS_OF,
+  /** Months the sheet covers, so a part year is not spread across twelve. */
+  reportedMonths = 12,
 ): PropertyMetrics {
   const leases = allLeases.filter((l) => l.propertyId === property.id)
   const col = leases.reduce((a, l) => a + collected(l), 0)
@@ -262,8 +264,12 @@ export function propertyMetrics(
   // Apollo reports an annual gross only; spread it evenly so it still charts.
   const isAnnualOnly = leases.length === 0 && property.statedGross > 0
   const collectedFinal = isAnnualOnly ? property.statedGross : col
+  // A property reported as one annual figure — Apollo — has its income spread
+  // evenly, but only across the months the source actually covers. Spreading a
+  // part year over twelve would show rent arriving in months nobody reported.
   const monthly = isAnnualOnly
-    ? new Array(12).fill(property.statedGross / 12)
+    ? Array.from({ length: 12 }, (_, i) =>
+      (i < reportedMonths ? property.statedGross / reportedMonths : 0))
     : monthlySeries(leases)
 
   return {

@@ -1,4 +1,5 @@
 import type { Lease, MonthCell } from '../../lib/types'
+import { APOLLO_TENANTS } from '../apollo'
 
 const r = (value: MonthCell, n: number): MonthCell[] => Array.from({ length: n }, () => value)
 /** September onward is not on this sheet yet — not reported, not vacant. */
@@ -330,11 +331,31 @@ export const TAX_2026: Record<string, { bill: number; billYear: number }> = {
   'prairie-1211': { bill: 15080, billYear: 2024 },
 }
 
-/** No Apollo figure appears on the 2026 sheet. */
-export const APOLLO_GROSS_2026 = 0
-
 /** Months the 2026 sheet covers. */
 export const MONTHS_REPORTED_2026 = 8
+
+/**
+ * What the park is billing a month, from the registry rather than a rent roll.
+ *
+ * The 2026 sheet leaves Apollo out altogether. The tenant registry does cover
+ * it and is itself a 2026 document — dated July — so it is the better source for
+ * the year, and the only one there is. Thirty-seven lots and five parking spaces
+ * come to $33,100 a month, water charge included.
+ */
+export const APOLLO_MONTHLY_2026 = APOLLO_TENANTS.reduce((a, t) => a + t.amountDue, 0)
+
+/**
+ * Apollo's 2026 income to date — the registry's monthly figure across the eight
+ * months the rent roll covers, so the park and the commercial suites span the
+ * same period and can be added together.
+ *
+ * This is derived, not transcribed. The registry states what is due each month
+ * as of July; applying it to January assumes the rents did not move earlier in
+ * the year, which is an assumption rather than a fact — 2025's $378,870 against
+ * this $397,200 annualised says they do move. It is marked as derived wherever
+ * it is shown, and the moment a real 2026 figure arrives it should replace this.
+ */
+export const APOLLO_GROSS_2026 = APOLLO_MONTHLY_2026 * MONTHS_REPORTED_2026
 
 /**
  * The 2026 sheet prints no row or page totals, so there is nothing to reconcile
