@@ -24,7 +24,8 @@ import { Receivables } from './views/Receivables'
 import { SlowPayers } from './views/SlowPayers'
 import { Assets } from './views/Assets'
 import { TaxReturns } from './views/TaxReturns'
-import { EMPTY_REGISTER, type AssetRegister } from './lib/assets'
+import { type AssetRegister } from './lib/assets'
+import { DEFAULT_REGISTER } from './data/personalProperty'
 import { TenantProfileView } from './views/TenantProfile'
 import type { TenantProfiles } from './lib/tenants'
 import { chargesForYear, payerRecordsFor, statusOf, trackedCharges,
@@ -55,7 +56,7 @@ export default function App() {
   const profileState = useStored<TenantProfiles>(STORE_KEYS.profiles, {})
   const paymentState = useStored<Payment[]>(STORE_KEYS.payments, [])
   const collectionState = useStored<CollectionSettings>(STORE_KEYS.collection, {})
-  const assetState = useStored<AssetRegister>(STORE_KEYS.assets, EMPTY_REGISTER)
+  const assetState = useStored<AssetRegister>(STORE_KEYS.assets, DEFAULT_REGISTER)
 
   const overrides = overridesState.value
   const payments = paymentState.value

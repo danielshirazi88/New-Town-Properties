@@ -10,6 +10,7 @@ import {
   type RealEstateAsset, type VehicleAsset,
 } from '../lib/assets'
 import type { PortfolioKpis } from '../lib/portfolio'
+import { PERSONAL_PROPERTY_SEEDS, seedRealEstate } from '../data/personalProperty'
 
 type Tab = 'overview' | 'real-estate' | 'investments' | 'vehicles'
 
@@ -268,6 +269,11 @@ function RealEstate({
   const linked = new Set(rows.map((r) => r.propertyId).filter(Boolean))
   const missing = k.properties.filter((p) => !linked.has(p.property.id))
 
+  // Seeded rows keep their seed id, so one deleted on purpose is not offered
+  // back on the next visit — only ones never added in the first place.
+  const present = new Set(rows.map((r) => r.id))
+  const missingPersonal = PERSONAL_PROPERTY_SEEDS.filter((x) => !present.has(x.seedId))
+
   const importAll = () => {
     onChange([
       ...rows,
@@ -282,6 +288,8 @@ function RealEstate({
       })),
     ])
   }
+
+  const addPersonal = () => onChange([...rows, ...missingPersonal.map(seedRealEstate)])
 
   const save = (a: RealEstateAsset) => {
     const at = { ...a, updatedAt: new Date().toISOString() }
@@ -303,6 +311,12 @@ function RealEstate({
             Pull in {num(missing.length)} rental {missing.length === 1 ? 'building' : 'buildings'} from the portfolio
           </button>
         )}
+        {missingPersonal.length > 0 && (
+          <button className="btn ghost" onClick={addPersonal}>
+            Add {num(missingPersonal.length)} known personal{' '}
+            {missingPersonal.length === 1 ? 'property' : 'properties'}
+          </button>
+        )}
         <div className="spacer" />
         <span className="t-mute">
           {num(rental.length)} rental · {num(personal.length)} personal
@@ -311,9 +325,9 @@ function RealEstate({
 
       {rows.length === 0 ? (
         <Empty>
-          No property recorded yet. Pull in the rental buildings from the portfolio, then add the
-          personal ones — the Chicago condo at 1211 S Prairie is reported as a residence on the 2023
-          return, so it belongs under personal rather than rental.
+          No property recorded yet. Pull in the rental buildings from the portfolio, and add the
+          personal ones the returns name — 129 E Foster Ave in Roselle, and the Chicago condo at
+          1211 S Prairie, which the 2023 Schedule E reports as a residence rather than a rental.
         </Empty>
       ) : (
         <div className="table-wrap">

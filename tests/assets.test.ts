@@ -4,6 +4,7 @@ import {
   registerInterest, vehicleValued,
   type AssetRegister, type InvestmentAsset, type RealEstateAsset, type VehicleAsset,
 } from '../src/lib/assets'
+import { DEFAULT_REGISTER, PERSONAL_PROPERTY_SEEDS, seedRealEstate } from '../src/data/personalProperty'
 
 const re = (o: Partial<RealEstateAsset>): RealEstateAsset => ({
   id: 'r1', kind: 'real-estate', name: 'A building', use: 'rental', ...o,
@@ -169,5 +170,41 @@ describe('the breakdown chart', () => {
       investments: [inv({ balance: 4_300_000 })],
     }), noValues)
     expect(assetBreakdown(t).map((s) => s.id)).toEqual(['rental', 'investments', 'personal'])
+  })
+})
+
+describe('the seeded personal property', () => {
+  it('starts the register with the residences the returns name', () => {
+    expect(DEFAULT_REGISTER.realEstate.map((r) => r.name)).toEqual([
+      '129 E Foster Ave',
+      '1211 S Prairie, Unit 2605',
+    ])
+    expect(DEFAULT_REGISTER.realEstate.every((r) => r.use === 'personal')).toBe(true)
+    expect(DEFAULT_REGISTER.investments).toHaveLength(0)
+    expect(DEFAULT_REGISTER.vehicles).toHaveLength(0)
+  })
+
+  it('carries no invented value', () => {
+    // Neither has an appraisal behind it, so both count as zero and are reported
+    // as unvalued rather than guessed at.
+    const t = assetTotals(DEFAULT_REGISTER, noValues)
+    expect(t.personalRealEstate).toBe(0)
+    expect(t.unvaluedRealEstate).toBe(2)
+  })
+
+  it('keeps a stable id so a deleted row is never re-seeded', () => {
+    const ids = PERSONAL_PROPERTY_SEEDS.map((s) => s.seedId)
+    expect(new Set(ids).size).toBe(ids.length)
+    // The id survives seeding, which is what lets the view tell "never added"
+    // from "added and then deleted".
+    expect(PERSONAL_PROPERTY_SEEDS.map((s) => seedRealEstate(s).id)).toEqual(ids)
+  })
+
+  it('does not put 1211 S Prairie on both sides of the register', () => {
+    // It is on Schedule E, but as a residence — it must not also arrive as a
+    // rental when the portfolio buildings are imported.
+    const prairie = DEFAULT_REGISTER.realEstate.find((r) => r.name.includes('Prairie'))!
+    expect(prairie.use).toBe('personal')
+    expect(prairie.propertyId).toBeUndefined()
   })
 })
