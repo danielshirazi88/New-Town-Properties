@@ -8,6 +8,7 @@ import {
 } from '../lib/receivables'
 import { resolveProfile, type TenantProfiles } from '../lib/tenants'
 import type { PortfolioKpis } from '../lib/portfolio'
+import { rentRoll } from '../data/rentRolls'
 
 /** How a payer reads at a glance. Ordered worst to best. */
 type Tier = 'chronic' | 'slow' | 'watch' | 'reliable'
@@ -50,16 +51,23 @@ export function SlowPayers({
   const [propertyFilter, setPropertyFilter] = useState('all')
   const [projectDays, setProjectDays] = useState(30)
 
+  // The sheet stops when the year does; rent does not, so collection looks
+  // past it and marks what it carried.
+  const carry = { reportedMonths: rentRoll(k.fiscalYear).monthsReported, carryForward: true }
+
   const leases = useMemo(
     () => k.properties.flatMap((p) => p.leases)
       .filter((l) => propertyFilter === 'all' || l.propertyId === propertyFilter),
     [k, propertyFilter],
   )
   const charges = useMemo(
-    () => trackedCharges(chargesForYear(leases, k.fiscalYear), settings.startPeriod),
-    [leases, k.fiscalYear, settings.startPeriod],
+    () => trackedCharges(chargesForYear(leases, k.fiscalYear, carry), settings.startPeriod),
+    [leases, k.fiscalYear, settings.startPeriod, carry],
   )
-  const records = useMemo(() => payerRecordsFor(charges, payments), [charges, payments])
+  const records = useMemo(
+    () => payerRecordsFor(charges, payments, k.asOf, settings),
+    [charges, payments, k.asOf, settings],
+  )
 
   const nameOf = (r: PayerRecord): string =>
     resolveProfile(r.leaseId, [], profiles).displayName || r.tenant
@@ -68,8 +76,11 @@ export function SlowPayers({
     k.properties.find((p) => p.property.id === id)?.property.name ?? id
 
   // Only tenants with a settled month have a payment history worth ranking.
+  // Only a recorded payment carries a date, so only those tenants can be ranked
+  // on speed. A declared month says the rent came in, not when.
   const rated = records.filter((r) => r.chargesSettled > 0)
   const unrated = records.filter((r) => r.chargesSettled === 0)
+  const declaredOnly = records.filter((r) => r.chargesSettled === 0 && r.chargesDeclared > 0)
 
   const slowest = [...rated].sort((a, b) => (b.averageDaysToPay ?? 0) - (a.averageDaysToPay ?? 0))
   const fastest = [...rated].sort((a, b) => (a.averageDaysToPay ?? 0) - (b.averageDaysToPay ?? 0))
@@ -83,7 +94,7 @@ export function SlowPayers({
 
   // Late fees: what has accrued, and what an unpaid balance keeps adding.
   const fees = useMemo(() => {
-    const statuses = charges.map((c) => statusOf(c, payments))
+    const statuses = charges.map((c) => statusOf(c, payments, k.asOf, settings))
     const byLease = new Map<string, {
       leaseId: string; tenant: string; unit: string; propertyId: string
       earned: number; waived: number; openLateDays: number; openBalance: number; lateMonths: number
@@ -97,7 +108,7 @@ export function SlowPayers({
       cur.earned += s.lateFee
       if (s.lateFeeWaived) cur.waived += s.lateDays * LATE_FEE_PER_DAY
       if (s.lateDays > 0) cur.lateMonths += 1
-      if (s.balance > 0.005) {
+      if (s.balance > 0.005 && s.isDue) {
         cur.openBalance += s.balance
         // Only an unwaived open month keeps the meter running.
         if (!s.lateFeeWaived) cur.openLateDays += s.lateDays
@@ -138,7 +149,7 @@ export function SlowPayers({
         </select>
       </div>
 
-      {payments.length === 0 && (
+      {payments.length === 0 && !settings.settledThrough && (
         <div className="callout">
           <div className="callout-title">No payments recorded — these figures are a worst case, not a debt</div>
           <p>
@@ -184,8 +195,19 @@ export function SlowPayers({
 
       {rated.length === 0 ? (
         <Empty>
-          No payments have been recorded for {k.fiscalYear} yet, so there is no payment history to
-          rank. Record rent as it comes in on the Accounting tab and this screen fills in.
+          {declaredOnly.length > 0 ? (
+            <>
+              {num(declaredOnly.length)} tenants are settled through{' '}
+              {settings.settledThrough ?? 'the declared month'}, but by declaration rather than by
+              recorded payments — so the rent is known to have come in, not when. Days to pay starts
+              building from the first payment recorded on the Rent collection tab.
+            </>
+          ) : (
+            <>
+              No payments have been recorded for {k.fiscalYear} yet, so there is no payment history
+              to rank. Record rent as it comes in on the Rent collection tab and this screen fills in.
+            </>
+          )}
         </Empty>
       ) : (
         <div className="grid-2">

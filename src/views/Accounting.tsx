@@ -9,10 +9,12 @@ import {
 } from '../lib/receivables'
 import { PAYMENT_METHODS, methodLabel, resolveProfile, type PaymentMethodId, type TenantProfiles } from '../lib/tenants'
 import type { PortfolioKpis } from '../lib/portfolio'
+import { rentRoll } from '../data/rentRolls'
 import { newId } from '../lib/expenses'
 
+/** Status is carried by shape as well as colour, so it never depends on hue. */
 const glyph = (s: ChargeStatus['state']): string =>
-  s === 'paid' ? '✓' : s === 'partial' ? '½' : s === 'late' ? '!' : '·'
+  s === 'paid' ? '✓' : s === 'partial' ? '½' : s === 'late' ? '!' : s === 'upcoming' ? '–' : '·'
 
 export function Accounting({
   k, payments, setPayments, profiles, onTenant, settings, setSettings,
@@ -28,20 +30,31 @@ export function Accounting({
   const [propertyFilter, setPropertyFilter] = useState('all')
   const [recording, setRecording] = useState<{ charge: RentCharge; status: ChargeStatus } | null>(null)
 
+  // The sheet stops when the year does; rent does not, so collection looks
+  // past it and marks what it carried.
+  const carry = { reportedMonths: rentRoll(k.fiscalYear).monthsReported, carryForward: true }
+
   const leases = useMemo(
     () => k.properties.flatMap((p) => p.leases)
       .filter((l) => propertyFilter === 'all' || l.propertyId === propertyFilter),
     [k, propertyFilter],
   )
 
-  const allCharges = useMemo(() => chargesForYear(leases, k.fiscalYear), [leases, k.fiscalYear])
+  const allCharges = useMemo(
+    () => chargesForYear(leases, k.fiscalYear, carry),
+    [leases, k.fiscalYear, carry],
+  )
   // Months before tracking began are out of scope entirely — see CollectionSettings.
   const charges = useMemo(
     () => trackedCharges(allCharges, settings.startPeriod),
     [allCharges, settings.startPeriod],
   )
-  const statuses = useMemo(() => charges.map((c) => statusOf(c, payments)), [charges, payments])
+  const statuses = useMemo(
+    () => charges.map((c) => statusOf(c, payments, k.asOf, settings)),
+    [charges, payments, k.asOf, settings],
+  )
   const untracked = allCharges.length - charges.length
+  const projected = charges.filter((c) => c.projected).length
 
   const byLease = useMemo(() => {
     const m = new Map<string, ChargeStatus[]>()
@@ -53,11 +66,17 @@ export function Accounting({
     return m
   }, [statuses])
 
+  // Everything on the sheet, and — separately — the part of it that has actually
+  // fallen due. Rent for December is billed but not owed, so measuring collection
+  // against the whole year would read as months of arrears every January.
   const billed = statuses.reduce((a, s) => a + s.charge.amountDue, 0)
-  const collected = statuses.reduce((a, s) => a + s.paid, 0)
-  const outstanding = statuses.reduce((a, s) => a + s.balance, 0)
+  const due = statuses.filter((s) => s.isDue)
+  const upcoming = statuses.filter((s) => !s.isDue)
+  const dueBilled = due.reduce((a, s) => a + s.charge.amountDue, 0)
+  const collected = due.reduce((a, s) => a + s.paid, 0)
+  const outstanding = due.reduce((a, s) => a + s.balance, 0)
   const lateFees = statuses.reduce((a, s) => a + s.lateFee, 0)
-  const settled = statuses.filter((s) => s.state === 'paid').length
+  const settled = due.filter((s) => s.state === 'paid').length
 
   // Billed and collected side by side, month by month.
   const billedByMonth = new Array(12).fill(0)
@@ -100,6 +119,24 @@ export function Accounting({
             ))}
           </select>
         </label>
+        <label className="field" style={{ minWidth: 230 }}>
+          <span>Everything collected through</span>
+          <select
+            value={settings.settledThrough ?? ''}
+            onChange={(e) => setSettings({
+              ...settings,
+              settledThrough: e.target.value || undefined,
+              settledDeclaredOn: e.target.value ? new Date().toISOString().slice(0, 10) : undefined,
+            })}
+          >
+            <option value="">Nothing declared</option>
+            {MONTHS.map((m, i) => (
+              <option key={m} value={`${k.fiscalYear}-${String(i + 1).padStart(2, '0')}`}>
+                {MONTH_NAMES[i]} {k.fiscalYear} and earlier
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="field" style={{ minWidth: 210 }}>
           <span>Track collection from</span>
           <select
@@ -122,19 +159,43 @@ export function Accounting({
       </div>
 
       <div className="kpi-grid">
-        <Kpi accent label="Billed" value={money(billed)} note={`${num(charges.length)} monthly charges`} />
+        <Kpi accent label="Billed to date" value={money(dueBilled)}
+          note={`${num(due.length)} months fallen due of ${num(charges.length)}`} />
         <Kpi accent label="Collected" value={money(collected)}
-          note={billed > 0 ? `${pct((collected / billed) * 100)} of billed` : undefined} />
+          note={dueBilled > 0 ? `${pct((collected / dueBilled) * 100)} of what has come due` : undefined} />
         <Kpi label="Outstanding" value={money(outstanding)} warn={outstanding > 0}
-          note={`${statuses.filter((s) => s.balance > 0.005).length} months unsettled`} />
+          note={outstanding > 0
+            ? `${num(due.filter((s) => s.balance > 0.005).length)} months unsettled`
+            : 'Every month that has come due is settled'} />
         <Kpi label="Late fees accrued" value={money(lateFees)} warn={lateFees > 0}
-          note={`${statuses.filter((s) => s.lateDays > 0).length} months past grace`} />
-        <Kpi label="Months settled" value={`${settled} of ${statuses.length}`} />
-        <Kpi label="Collection rate" value={billed > 0 ? pct((collected / billed) * 100) : '—'}
-          note="Collected against billed" />
+          note={`${num(statuses.filter((s) => s.lateDays > 0).length)} months past grace`} />
+        <Kpi label="Months settled" value={`${num(settled)} of ${num(due.length)}`}
+          note="Of those that have fallen due" />
+        <Kpi label="Not yet due" value={money(upcoming.reduce((a, s) => a + s.charge.amountDue, 0))}
+          note={upcoming.length
+            ? `${num(upcoming.length)} months still to come${projected > 0 ? `, ${num(projected)} carried forward` : ''}`
+            : 'The year is fully billed'} />
       </div>
 
-      {payments.length === 0 && (
+      {settings.settledThrough && (
+        <div className="callout" style={{ marginTop: 18 }}>
+          <div className="callout-title">
+            Everything through {MONTH_NAMES[Number(settings.settledThrough.slice(5)) - 1]}{' '}
+            {settings.settledThrough.slice(0, 4)} is settled by declaration
+          </div>
+          <p>
+            {settings.settledNote
+              ?? 'Those months read as collected because the owner said so, not because a payment '
+                + 'was recorded against each one.'}
+            {' '}They show green with a dashed outline to keep them apart from a month with a real
+            payment behind it, and they carry no payment date — so they never appear in days-to-pay
+            or in the on-time record. Recording an actual payment on any of them replaces the
+            declaration for that month.
+          </p>
+        </div>
+      )}
+
+      {payments.length === 0 && !settings.settledThrough && (
         <div className="callout" style={{ marginTop: 18 }}>
           <div className="callout-title">No payments recorded — every month below reads as unpaid</div>
           <p>
@@ -175,7 +236,10 @@ export function Accounting({
       <div className="section">
         <div className="section-title">
           Collection grid
-          <span className="hint">✓ settled · ½ part paid · ! past grace · · due</span>
+          <span className="hint">
+            ✓ paid · ✓ dashed = settled by declaration · · due · ! past grace · – not yet due ·
+            ~ rent carried past the end of the sheet
+          </span>
         </div>
         <div className="table-wrap">
           <table>
@@ -218,11 +282,21 @@ export function Accounting({
                       return (
                         <td key={month}>
                           <button
-                            className={`collect-cell ${s.state}`}
-                            title={`${MONTH_NAMES[month]}: ${money(s.charge.amountDue)} due, ${money(s.paid)} paid${s.lateFee > 0 ? `, ${money(s.lateFee)} late fee` : ''}`}
+                            className={`collect-cell ${s.state}${s.settledByDeclaration ? ' declared' : ''}`}
+                            title={[
+                              `${MONTH_NAMES[month]}: ${money(s.charge.amountDue)} due, ${money(s.paid)} paid`,
+                              s.lateFee > 0 ? `${money(s.lateFee)} late fee` : '',
+                              s.settledByDeclaration
+                                ? `Settled by declaration through ${settings.settledThrough} — click to record the actual payment`
+                                : '',
+                              s.charge.projected
+                                ? 'Carried forward from the last month the rent roll covers'
+                                : '',
+                            ].filter(Boolean).join(' · ')}
                             onClick={() => setRecording({ charge: s.charge, status: s })}
                           >
                             {glyph(s.state)} {Math.round(s.state === 'paid' ? s.paid : s.balance).toLocaleString()}
+                            {s.charge.projected && <span aria-hidden> ~</span>}
                           </button>
                         </td>
                       )

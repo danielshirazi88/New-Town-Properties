@@ -30,7 +30,7 @@ import { EMPTY_TRUST_STATE, resolveTrust, type TrustState } from './lib/trust'
 import { TRUST_HOLDINGS } from './data/trust'
 import { TenantProfileView } from './views/TenantProfile'
 import type { TenantProfiles } from './lib/tenants'
-import { chargesForYear, payerRecordsFor, statusOf, trackedCharges,
+import { DEFAULT_COLLECTION, chargesForYear, payerRecordsFor, statusOf, trackedCharges,
   type CollectionSettings, type Payment } from './lib/receivables'
 import { AVAILABLE_YEARS, CURRENT_YEAR, isPartYear, rentRoll, yearLabel } from './data/rentRolls'
 import { DEFAULT_CAP_RATE } from './lib/portfolio'
@@ -57,7 +57,7 @@ export default function App() {
   const taxState = useStored<TaxEntries>(STORE_KEYS.taxes, {})
   const profileState = useStored<TenantProfiles>(STORE_KEYS.profiles, {})
   const paymentState = useStored<Payment[]>(STORE_KEYS.payments, [])
-  const collectionState = useStored<CollectionSettings>(STORE_KEYS.collection, {})
+  const collectionState = useStored<CollectionSettings>(STORE_KEYS.collection, DEFAULT_COLLECTION)
   const assetState = useStored<AssetRegister>(STORE_KEYS.assets, EMPTY_REGISTER)
   const trustState = useStored<TrustState>(STORE_KEYS.trust, EMPTY_TRUST_STATE)
 
@@ -90,15 +90,19 @@ export default function App() {
 
   const { openCount, slowCount } = useMemo(() => {
     const charges = trackedCharges(
-      chargesForYear(k.properties.flatMap((p) => p.leases), k.fiscalYear),
+      chargesForYear(k.properties.flatMap((p) => p.leases), k.fiscalYear,
+      { reportedMonths: rentRoll(k.fiscalYear).monthsReported, carryForward: true }),
       collectionState.value.startPeriod,
     )
     return {
-      openCount: charges.filter((c) => statusOf(c, payments).balance > 0.005).length,
-      slowCount: payerRecordsFor(charges, payments)
+      openCount: charges.filter((c) => {
+        const s = statusOf(c, payments, k.asOf, collectionState.value)
+        return s.isDue && s.balance > 0.005
+      }).length,
+      slowCount: payerRecordsFor(charges, payments, k.asOf, collectionState.value)
         .filter((r) => r.chargesSettled > 0 && (r.onTimeRatePct < 80 || r.monthsLate >= 2)).length,
     }
-  }, [k, payments, collectionState.value.startPeriod])
+  }, [k, payments, collectionState.value])
 
   useEffect(() => {
     window.scrollTo({ top: 0 })
@@ -324,6 +328,7 @@ export default function App() {
               profiles={profileState.value}
               setProfiles={profileState.setValue}
               payments={payments}
+              settings={collectionState.value}
               onBack={() => setTab(tenantFrom)}
               onProperty={goProperty}
             />

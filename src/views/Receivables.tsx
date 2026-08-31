@@ -8,6 +8,7 @@ import {
 } from '../lib/receivables'
 import { resolveProfile, type TenantProfiles } from '../lib/tenants'
 import type { PortfolioKpis } from '../lib/portfolio'
+import { rentRoll } from '../data/rentRolls'
 
 const BUCKETS: { id: AgingBucket; label: string; note: string }[] = [
   { id: 'current', label: 'Current', note: 'Not yet past due' },
@@ -45,17 +46,22 @@ export function Receivables({
   const [bucketFilter, setBucketFilter] = useState<AgingBucket | 'all'>('all')
   const [propertyFilter, setPropertyFilter] = useState('all')
 
+  // The sheet stops when the year does; rent does not, so collection looks
+  // past it and marks what it carried.
+  const carry = { reportedMonths: rentRoll(k.fiscalYear).monthsReported, carryForward: true }
+
   const leases = useMemo(() => k.properties.flatMap((p) => p.leases), [k])
   const charges = useMemo(
-    () => trackedCharges(chargesForYear(leases, k.fiscalYear), settings.startPeriod),
-    [leases, k.fiscalYear, settings.startPeriod],
+    () => trackedCharges(chargesForYear(leases, k.fiscalYear, carry), settings.startPeriod),
+    [leases, k.fiscalYear, settings.startPeriod, carry],
   )
 
-  // Only unsettled months are receivable. Everything else is history.
+  // A month is receivable once it has fallen due and not been settled. Rent for
+  // December is not owed in September, so an upcoming month is not an arrear.
   const open = useMemo(
     () => charges
-      .map((c) => statusOf(c, payments))
-      .filter((s) => s.balance > 0.005)
+      .map((c) => statusOf(c, payments, k.asOf, settings))
+      .filter((s) => s.balance > 0.005 && s.isDue)
       .map((s) => ({ status: s, bucket: agingOf(s) }))
       .sort((a, b) => b.status.charge.dueDate.getTime() - a.status.charge.dueDate.getTime()),
     [charges, payments],
@@ -131,14 +137,30 @@ export function Receivables({
         </div>
       </div>
 
-      {payments.length === 0 && (
+      {payments.length === 0 && !settings.settledThrough && (
         <div className="callout">
           <div className="callout-title">No payments recorded — these figures are a worst case, not a debt</div>
           <p>
             Nothing has been marked collected for {k.fiscalYear} yet, so every billed month counts as
             outstanding and the late fees are what would have accrued if none of it had ever come in.
-            Record rent on the <strong>Rent collection</strong> tab as it arrives, or set a tracking
-            start month there so earlier months fall out of scope.
+            Record rent on the <strong>Rent collection</strong> tab as it arrives, or declare the
+            book settled to a given month there.
+          </p>
+        </div>
+      )}
+
+      {open.length === 0 && (
+        <div className="callout">
+          <div className="callout-title">Nothing outstanding — every tenant is current</div>
+          <p>
+            Every month of {k.fiscalYear} rent that has fallen due is settled.
+            {settings.settledThrough && (
+              <> Months through {MONTH_NAMES[Number(settings.settledThrough.slice(5)) - 1]}{' '}
+              {settings.settledThrough.slice(0, 4)} are settled by the owner's declaration rather
+              than by recorded payments.</>
+            )}{' '}
+            Rent not yet due is not counted here — it appears on the Rent collection grid as
+            upcoming until its 1st arrives.
           </p>
         </div>
       )}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  GRACE_THROUGH_DAY, LATE_FEE_PER_DAY, agingOf, chargesForLease, payerRecordsFor, periodOf, statusOf,
-  trackedCharges, type Payment, type RentCharge,
+  DEFAULT_COLLECTION, GRACE_THROUGH_DAY, LATE_FEE_PER_DAY, agingOf, chargesForLease,
+  payerRecordsFor, periodOf, statusOf, trackedCharges, type Payment, type RentCharge,
 } from '../src/lib/receivables'
 import type { Lease } from '../src/lib/types'
 
@@ -193,5 +193,169 @@ describe('the tracking window', () => {
       .reduce((a, c) => a + statusOf(c, [], new Date('2026-12-31')).balance, 0)
     expect(owed(undefined)).toBe(12_000)
     expect(owed('2026-08')).toBe(5_000)
+  })
+})
+
+describe('the settled-through declaration', () => {
+  const charges = chargesForLease(lease(Array(12).fill(1000)), 2026)
+  const settled = { settledThrough: '2026-08' }
+  // Rent for September is due on the 1st; today is the day before.
+  const aug31 = new Date('2026-08-31T12:00:00')
+
+  it('reads every month through the declared one as paid', () => {
+    for (const c of charges.slice(0, 8)) {
+      const s = statusOf(c, [], aug31, settled)
+      expect(s.state, c.period).toBe('paid')
+      expect(s.balance).toBe(0)
+      expect(s.lateFee).toBe(0)
+      expect(s.settledByDeclaration).toBe(true)
+    }
+  })
+
+  it('invents no payment date, so it cannot fake a days-to-pay', () => {
+    const s = statusOf(charges[0], [], aug31, settled)
+    expect(s.daysToPay).toBeUndefined()
+    expect(s.settledOn).toBeUndefined()
+    expect(s.payments).toEqual([])
+  })
+
+  it('leaves the month after the declaration owing', () => {
+    const sep = statusOf(charges[8], [], aug31, settled)
+    expect(sep.settledByDeclaration).toBe(false)
+    expect(sep.balance).toBe(1000)
+  })
+
+  it('lets a recorded payment override the declaration', () => {
+    // A real payment is evidence; a blanket assertion is not. If someone records
+    // a part payment against a declared month, that is what the month shows.
+    const s = statusOf(charges[0], [pay({
+      id: 'p', period: '2026-01', paidOn: '2026-01-03', amount: 400,
+    })], aug31, settled)
+    expect(s.settledByDeclaration).toBe(false)
+    expect(s.state).toBe('partial')
+    expect(s.balance).toBe(600)
+  })
+
+  it('counts declared months apart from ones with a recorded payment', () => {
+    const r = payerRecordsFor(charges, [], aug31, settled)[0]
+    expect(r.chargesDeclared).toBe(8)
+    expect(r.chargesSettled).toBe(0)
+    // Nothing is known about how fast they paid, so nothing is claimed.
+    expect(r.averageDaysToPay).toBeUndefined()
+    expect(r.totalLateFees).toBe(0)
+  })
+})
+
+describe('rent that has not yet fallen due', () => {
+  const charges = chargesForLease(lease(Array(12).fill(1000)), 2026)
+  const settled = { settledThrough: '2026-08' }
+  const aug31 = new Date('2026-08-31T12:00:00')
+  const sep1 = new Date('2026-09-01T09:00:00')
+  const sep6 = new Date('2026-09-06T09:00:00')
+
+  it('is upcoming the day before, not due', () => {
+    const s = statusOf(charges[8], [], aug31, settled)
+    expect(s.state).toBe('upcoming')
+    expect(s.isDue).toBe(false)
+    expect(s.lateDays).toBe(0)
+  })
+
+  it('turns due on the 1st', () => {
+    const s = statusOf(charges[8], [], sep1, settled)
+    expect(s.state).toBe('due')
+    expect(s.isDue).toBe(true)
+    expect(s.lateFee).toBe(0)
+  })
+
+  it('turns late on the 6th, with the first day of fee', () => {
+    const s = statusOf(charges[8], [], sep6, settled)
+    expect(s.state).toBe('late')
+    expect(s.lateDays).toBe(1)
+    expect(s.lateFee).toBe(LATE_FEE_PER_DAY)
+  })
+
+  it('does not age a month that has not come due', () => {
+    // October rent is not 30 days overdue in September.
+    expect(agingOf(statusOf(charges[9], [], sep6, settled))).toBe('current')
+  })
+
+  it('keeps the rest of the year out of what is owed', () => {
+    // The whole point: on 1 September the arrears are one month, not four.
+    const owed = charges
+      .map((c) => statusOf(c, [], sep1, settled))
+      .filter((s) => s.isDue && s.balance > 0.005)
+    expect(owed).toHaveLength(1)
+    expect(owed[0].charge.period).toBe('2026-09')
+  })
+
+  it('leaves a payer with nothing open until a due month goes unpaid', () => {
+    expect(payerRecordsFor(charges, [], aug31, settled)[0].chargesOpen).toBe(0)
+    expect(payerRecordsFor(charges, [], sep1, settled)[0].chargesOpen).toBe(1)
+  })
+})
+
+describe('the shipped starting position', () => {
+  it('declares the book clean through August 2026 and no further', () => {
+    expect(DEFAULT_COLLECTION.settledThrough).toBe('2026-08')
+    expect(DEFAULT_COLLECTION.settledDeclaredOn).toBe('2026-08-31')
+    // It says on its face that it is a declaration, not a set of payments.
+    expect(DEFAULT_COLLECTION.settledNote).toMatch(/declaration/i)
+  })
+
+  it('does not also hide those months behind a tracking start', () => {
+    // Settled and out-of-scope are different claims; only one is being made.
+    expect(DEFAULT_COLLECTION.startPeriod).toBeUndefined()
+  })
+})
+
+describe('rent beyond the end of the sheet', () => {
+  // A 2026 roll pulled in August: eight months reported, four blank.
+  const partYear = (months: (number | 'V' | 'NR')[]) =>
+    chargesForLease(lease(months), 2026, { reportedMonths: 8, carryForward: true })
+
+  const paying = [...Array(8).fill(4000), ...Array(4).fill('NR')] as (number | 'NR')[]
+
+  it('carries the last reported rent into the months the sheet does not cover', () => {
+    const cs = partYear(paying)
+    expect(cs).toHaveLength(12)
+    expect(cs.slice(0, 8).every((c) => !c.projected)).toBe(true)
+    expect(cs.slice(8).every((c) => c.projected)).toBe(true)
+    expect(cs[8].amountDue).toBe(4000)
+    expect(cs[8].period).toBe('2026-09')
+  })
+
+  it('carries nothing from a vacancy', () => {
+    // An empty unit owes nothing next month either.
+    const cs = partYear([...Array(7).fill(4000), 'V', ...Array(4).fill('NR')] as (number | 'V' | 'NR')[])
+    expect(cs.filter((c) => c.projected)).toHaveLength(0)
+  })
+
+  it('carries nothing when the sheet stopped reporting early', () => {
+    // West Plaza's units report to April and then stop because the building was
+    // sold. Reading that as their own year-end would invent eight months of rent
+    // on a property the trust no longer owns.
+    const cs = partYear([...Array(4).fill(4773), ...Array(8).fill('NR')] as (number | 'NR')[])
+    expect(cs).toHaveLength(4)
+    expect(cs.some((c) => c.projected)).toBe(false)
+  })
+
+  it('does nothing at all on a complete year', () => {
+    const cs = chargesForLease(lease(Array(12).fill(1000)), 2025,
+      { reportedMonths: 12, carryForward: true })
+    expect(cs).toHaveLength(12)
+    expect(cs.some((c) => c.projected)).toBe(false)
+  })
+
+  it('stays off unless a caller asks for it', () => {
+    expect(chargesForLease(lease(paying), 2026, { reportedMonths: 8 })).toHaveLength(8)
+    expect(chargesForLease(lease(paying), 2026)).toHaveLength(8)
+  })
+
+  it('makes September collectable, which is the whole point', () => {
+    const [sep] = partYear(paying).filter((c) => c.period === '2026-09')
+    const settled = { settledThrough: '2026-08' }
+    expect(statusOf(sep, [], new Date('2026-08-31T12:00:00'), settled).state).toBe('upcoming')
+    expect(statusOf(sep, [], new Date('2026-09-01T09:00:00'), settled).state).toBe('due')
+    expect(statusOf(sep, [], new Date('2026-09-06T09:00:00'), settled).state).toBe('late')
   })
 })

@@ -334,6 +334,14 @@ tr.is-paid:hover { background: var(--paid-dim-strong); }
 .collect-cell.paid { background: var(--paid-dim-strong); border-color: var(--paid); color: var(--paid); }
 .collect-cell.partial { background: var(--red-dim); border-color: var(--red-dim-strong); color: var(--red); }
 .collect-cell.late { background: var(--red-dim-strong); border-color: var(--red); color: var(--red-bright); }
+.collect-cell.due { background: var(--surface-3); border-color: var(--line-strong); color: var(--ink-2); }
+/* Not yet the 1st — billed, but nothing is owed until it falls due. */
+.collect-cell.upcoming { background: transparent; border-style: dashed; color: var(--ink-3); }
+/* Settled by the owner's declaration rather than a recorded payment: green, but
+   outlined rather than filled, so it never passes for a payment on the books. */
+.collect-cell.paid.declared {
+  background: transparent; border-color: var(--paid); color: var(--paid); border-style: dashed;
+}
 .collect-cell.none { background: transparent; border-style: dashed; color: var(--ink-3); cursor: default; }
 
 /* ── Lease-expiry status ────────────────────────────────────────────────── */

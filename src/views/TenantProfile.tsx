@@ -4,25 +4,32 @@ import { MONTHS, collected, lastRate, rentPerSqFt, tenancyYears } from '../lib/f
 import { dateLabel, money, pct } from '../lib/format'
 import { PAYMENT_METHODS, methodLabel, profileCompleteness, resolveProfile,
   type PaymentMethodId, type TenantProfile as Profile, type TenantProfiles } from '../lib/tenants'
-import { MONTH_NAMES, chargesForLease, payerRecordsFor, statusOf, type Payment } from '../lib/receivables'
+import { MONTH_NAMES, chargesForLease, payerRecordsFor, statusOf,
+  type ChargeState, type CollectionSettings, type Payment } from '../lib/receivables'
 import type { PortfolioKpis } from '../lib/portfolio'
 import type { Lease } from '../lib/types'
+import { rentRoll } from '../data/rentRolls'
 
-const STATE_STYLE: Record<string, { cls: string; label: string }> = {
-  paid: { cls: 'ok', label: 'Paid' },
+const STATE_STYLE: Record<ChargeState, { cls: string; label: string }> = {
+  paid: { cls: 'paid', label: 'Paid' },
   partial: { cls: 'warn', label: 'Part paid' },
+  upcoming: { cls: 'mute', label: 'Not yet due' },
   due: { cls: 'mute', label: 'Due' },
   late: { cls: 'critical', label: 'Late' },
 }
 
+/** Typed against ChargeState, so a new state cannot silently fall through. */
+const styleFor = (s: ChargeState) => STATE_STYLE[s] ?? { cls: 'mute', label: s }
+
 export function TenantProfileView({
-  k, lease, profiles, setProfiles, payments, onBack, onProperty,
+  k, lease, profiles, setProfiles, payments, settings, onBack, onProperty,
 }: {
   k: PortfolioKpis
   lease: Lease
   profiles: TenantProfiles
   setProfiles: (next: TenantProfiles) => void
   payments: Payment[]
+  settings: CollectionSettings
   onBack: () => void
   onProperty: (id: string) => void
 }) {
@@ -31,11 +38,18 @@ export function TenantProfileView({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Profile>(resolved)
 
-  const charges = useMemo(() => chargesForLease(lease, k.fiscalYear), [lease, k.fiscalYear])
-  const statuses = useMemo(() => charges.map((c) => statusOf(c, payments)), [charges, payments])
+  const charges = useMemo(
+    () => chargesForLease(lease, k.fiscalYear,
+      { reportedMonths: rentRoll(k.fiscalYear).monthsReported, carryForward: true }),
+    [lease, k.fiscalYear],
+  )
+  const statuses = useMemo(
+    () => charges.map((c) => statusOf(c, payments, k.asOf, settings)),
+    [charges, payments, k.asOf, settings],
+  )
   const record = useMemo(
-    () => payerRecordsFor(charges, payments)[0],
-    [charges, payments],
+    () => payerRecordsFor(charges, payments, k.asOf, settings)[0],
+    [charges, payments, k.asOf, settings],
   )
 
   const completeness = profileCompleteness(resolved)
@@ -170,7 +184,7 @@ export function TenantProfileView({
               </thead>
               <tbody>
                 {statuses.map((s) => {
-                  const style = STATE_STYLE[s.state]
+                  const style = styleFor(s.state)
                   return (
                     <tr key={s.charge.id} style={s.state === 'paid' ? { background: 'rgba(40,160,90,0.10)' } : undefined}>
                       <td className="t-strong">{MONTH_NAMES[s.charge.month]}</td>

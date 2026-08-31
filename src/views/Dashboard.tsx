@@ -3,6 +3,7 @@ import { Card, Kpi } from '../components/ui'
 import { MONTHS, collected } from '../lib/finance'
 import { money, moneyShort, num, pct, signedPct } from '../lib/format'
 import type { PortfolioKpis } from '../lib/portfolio'
+import { rentRoll } from '../data/rentRolls'
 import type { Expense } from '../lib/expenses'
 import { rollup } from '../lib/expenses'
 import {
@@ -31,7 +32,8 @@ export function Dashboard({
   // month it bills for rather than showing an empty panel.
   const month = (() => {
     const charges = trackedCharges(
-      chargesForYear(k.properties.flatMap((p) => p.leases), k.fiscalYear),
+      chargesForYear(k.properties.flatMap((p) => p.leases), k.fiscalYear,
+      { reportedMonths: rentRoll(k.fiscalYear).monthsReported, carryForward: true }),
       collection.startPeriod,
     )
     if (charges.length === 0) return undefined
@@ -41,7 +43,7 @@ export function Dashboard({
       : Math.max(...charges.map((c) => c.month))
     const forMonth = charges.filter((c) => c.month === target)
     if (forMonth.length === 0) return undefined
-    const statuses = forMonth.map((c) => statusOf(c, payments, today))
+    const statuses = forMonth.map((c) => statusOf(c, payments, today, collection))
     return {
       index: target,
       isCurrent: today.getFullYear() === k.fiscalYear,

@@ -152,6 +152,24 @@ fees are shown separately rather than dropped, so what was given up stays visibl
 the 1st is 0 days, paying on the 5th is 4 days and still on time. DTP and on-time rate answer
 different questions and are kept apart.
 
+**The ledger starts clean.** On 31 August 2026 the owner confirmed every tenant
+was current, so everything billed through August 2026 is settled by declaration
+rather than by six hundred retro-entered payments. Those months read green with
+a dashed outline — paid, but with no payment date behind them, so they never
+appear in days-to-pay or the on-time record. Live tracking starts with the
+September rent: grey on the 1st, red from the 6th.
+
+**Rent is carried past the end of the sheet.** A roll pulled in August says
+nothing about September, but the rent does not stop, so the last reported month
+is carried forward and marked `~`. Nothing is carried from a vacancy, or from a
+unit the sheet stopped reporting early — West Plaza's units end in April because
+the building was sold, and carrying those would invent rent on a property the
+trust no longer owns.
+
+**Rent that has not fallen due is not owed.** December's rent is billed but not
+a receivable in September; it shows as upcoming until its 1st arrives, and the
+arrears figure counts only months that have come due.
+
 Two things to know before reading the receivables figures:
 
 - **A balance means "not recorded as paid", not "confirmed unpaid."** Nothing is imported

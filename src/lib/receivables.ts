@@ -48,6 +48,16 @@ export interface RentCharge {
   dueDate: Date
   /** End of the grace period — the last day a payment is on time. */
   graceThrough: Date
+  /**
+   * True when the sheet does not cover this month and the amount was carried
+   * forward from the last one it does.
+   *
+   * A rent roll pulled in August says nothing about September, but the rent does
+   * not stop — so collection has to look ahead of the document. What is carried
+   * is an expectation, not a figure anyone published, and it is marked as such
+   * everywhere it appears.
+   */
+  projected?: boolean
 }
 
 export const periodOf = (year: number, month: number): string =>
@@ -65,33 +75,75 @@ const wholeDaysBetween = (from: Date, to: Date): number =>
  * a free-rent month owes nothing by agreement, and a month the sheet does not
  * cover is not a debt — it is simply unknown.
  */
-export function chargesForLease(lease: Lease, year: number): RentCharge[] {
+export interface ChargeOptions {
+  /**
+   * How many months the sheet actually covers. Beyond this the rent is carried
+   * forward from the last reported month.
+   *
+   * It has to come from the sheet rather than from each lease: West Plaza's
+   * units stop reporting in April because the building was sold, and reading
+   * that as "the sheet ends in April for them" would carry rent forward on a
+   * property the trust no longer owns.
+   */
+  reportedMonths?: number
+  /** Off by default — a caller has to ask to look past the document. */
+  carryForward?: boolean
+}
+
+export function chargesForLease(
+  lease: Lease,
+  year: number,
+  opts: ChargeOptions = {},
+): RentCharge[] {
+  const make = (month: number, amount: number, projected: boolean): RentCharge => ({
+    id: `${lease.id}:${periodOf(year, month)}`,
+    leaseId: lease.id,
+    propertyId: lease.propertyId,
+    tenant: lease.tenant,
+    unit: lease.unit,
+    year,
+    month,
+    period: periodOf(year, month),
+    amountDue: amount,
+    dueDate: new Date(year, month, RENT_DUE_DAY),
+    graceThrough: new Date(year, month, GRACE_THROUGH_DAY),
+    ...(projected && { projected: true }),
+  })
+
   const out: RentCharge[] = []
   lease.months.forEach((cell, month) => {
     if (isUnreported(cell)) return
     const amount = cellAmount(cell)
     if (amount <= 0) return
-    out.push({
-      id: `${lease.id}:${periodOf(year, month)}`,
-      leaseId: lease.id,
-      propertyId: lease.propertyId,
-      tenant: lease.tenant,
-      unit: lease.unit,
-      year,
-      month,
-      period: periodOf(year, month),
-      amountDue: amount,
-      dueDate: new Date(year, month, RENT_DUE_DAY),
-      graceThrough: new Date(year, month, GRACE_THROUGH_DAY),
-    })
+    out.push(make(month, amount, false))
   })
+
+  const reported = opts.reportedMonths ?? 12
+  if (opts.carryForward && reported < 12) {
+    const last = lease.months[reported - 1]
+    // Only a unit that was actually paying in the last covered month keeps
+    // paying. A vacancy owes nothing, and a lease the sheet stopped reporting
+    // before the end — a sold building — has no rate to carry.
+    const rate = last === undefined || isUnreported(last) ? 0 : cellAmount(last)
+    if (rate > 0) {
+      for (let month = reported; month < 12; month += 1) out.push(make(month, rate, true))
+    }
+  }
   return out
 }
 
-export const chargesForYear = (leases: Lease[], year: number): RentCharge[] =>
-  leases.flatMap((l) => chargesForLease(l, year))
+export const chargesForYear = (
+  leases: Lease[],
+  year: number,
+  opts: ChargeOptions = {},
+): RentCharge[] => leases.flatMap((l) => chargesForLease(l, year, opts))
 
-export type ChargeState = 'paid' | 'partial' | 'due' | 'late'
+/**
+ * `upcoming` is a month that has been billed but whose 1st has not arrived. It
+ * is deliberately not `due`: rent for December is not owed in September, and
+ * counting it would put the rest of the year into the arrears figure.
+ */
+export type ChargeState = 'paid' | 'partial' | 'upcoming' | 'due' | 'late'
 
 export interface ChargeStatus {
   charge: RentCharge
@@ -116,6 +168,13 @@ export interface ChargeStatus {
    * rather than quietly substituting today's.
    */
   asOf: Date
+  /**
+   * Settled by the owner's blanket declaration rather than by a recorded
+   * payment. Paid, but with no payment date, so it carries no days-to-pay.
+   */
+  settledByDeclaration: boolean
+  /** True once the 1st has arrived. A charge that is not due is not owed. */
+  isDue: boolean
 }
 
 /**
@@ -129,6 +188,7 @@ export function statusOf(
   charge: RentCharge,
   payments: Payment[],
   asOf: Date = new Date(),
+  settings: CollectionSettings = {},
 ): ChargeStatus {
   const mine = payments
     .filter((p) => p.leaseId === charge.leaseId && p.period === charge.period)
@@ -148,6 +208,34 @@ export function statusOf(
     }
   }
 
+  const isDue = wholeDaysBetween(charge.dueDate, asOf) >= 0
+
+  // A month covered by the owner's declaration is settled, unless a real payment
+  // was recorded against it — recorded fact always beats a blanket assertion.
+  const declared = Boolean(settings.settledThrough)
+    && charge.period <= settings.settledThrough!
+    && mine.length === 0
+
+  if (declared) {
+    return {
+      charge,
+      payments: [],
+      paid: charge.amountDue,
+      balance: 0,
+      state: 'paid',
+      // No payment date exists, so there is no days-to-pay. Inventing one would
+      // corrupt every payer statistic built on it.
+      daysToPay: undefined,
+      lateDays: 0,
+      lateFee: 0,
+      lateFeeWaived: false,
+      settledOn: undefined,
+      asOf,
+      settledByDeclaration: true,
+      isDue,
+    }
+  }
+
   const waived = mine.some((p) => p.waiveLateFee)
   const lateFrom = settledOn ?? asOf
   const lateDays = balance > 0.005 || settledOn
@@ -157,6 +245,7 @@ export function statusOf(
   const state: ChargeState =
     balance <= 0.005 ? 'paid'
       : paid > 0.005 ? 'partial'
+      : !isDue ? 'upcoming'
       : wholeDaysBetween(charge.graceThrough, asOf) > 0 ? 'late'
       : 'due'
 
@@ -172,6 +261,8 @@ export function statusOf(
     lateFeeWaived: waived,
     settledOn,
     asOf,
+    settledByDeclaration: false,
+    isDue,
   }
 }
 
@@ -179,7 +270,7 @@ export function statusOf(
 export type AgingBucket = 'current' | '1-30' | '31-60' | '61-90' | '90+'
 
 export function agingOf(status: ChargeStatus, asOf: Date = status.asOf): AgingBucket {
-  if (status.balance <= 0.005) return 'current'
+  if (status.balance <= 0.005 || !status.isDue) return 'current'
   const days = wholeDaysBetween(status.charge.dueDate, asOf)
   if (days <= 0) return 'current'
   if (days <= 30) return '1-30'
@@ -193,7 +284,10 @@ export interface PayerRecord {
   tenant: string
   unit: string
   propertyId: string
+  /** Months settled by a recorded payment — the only ones with a days-to-pay. */
   chargesSettled: number
+  /** Months settled by the owner's declaration. Paid, but timing unknown. */
+  chargesDeclared: number
   chargesOpen: number
   /** Mean days to pay across settled months. Lower is better. */
   averageDaysToPay?: number
@@ -223,6 +317,7 @@ export function payerRecordsFor(
   charges: RentCharge[],
   payments: Payment[],
   asOf: Date = new Date(),
+  settings: CollectionSettings = {},
 ): PayerRecord[] {
   const byLease = new Map<string, RentCharge[]>()
   for (const c of charges) {
@@ -233,11 +328,16 @@ export function payerRecordsFor(
 
   const out: PayerRecord[] = []
   for (const [leaseId, list] of byLease) {
-    const statuses = list.map((c) => statusOf(c, payments, asOf))
+    const statuses = list.map((c) => statusOf(c, payments, asOf, settings))
+    // Only a recorded payment tells us when the money arrived. A declared month
+    // is paid but undated, so it is counted separately and kept out of every
+    // timing statistic rather than being scored as a perfect payment.
     const settled = statuses.filter((s) => s.daysToPay !== undefined)
+    const declared = statuses.filter((s) => s.settledByDeclaration)
     const dtp = settled.map((s) => s.daysToPay!)
     const onTime = settled.filter((s) => s.daysToPay! <= GRACE_DAYS).length
     const monthsLate = statuses.filter((s) => s.lateDays > 0).length
+    const openNow = statuses.filter((s) => s.balance > 0.005 && s.isDue).length
 
     const onTimeRatePct = settled.length ? (onTime / settled.length) * 100 : 0
     const avg = dtp.length ? dtp.reduce((a, b) => a + b, 0) / dtp.length : undefined
@@ -253,7 +353,10 @@ export function payerRecordsFor(
       unit: list[0].unit,
       propertyId: list[0].propertyId,
       chargesSettled: settled.length,
-      chargesOpen: statuses.filter((s) => s.balance > 0.005).length,
+      chargesDeclared: declared.length,
+      // Only months that have fallen due can be open; next quarter's rent is not
+      // an outstanding item.
+      chargesOpen: openNow,
       averageDaysToPay: avg,
       fastestDaysToPay: dtp.length ? Math.min(...dtp) : undefined,
       slowestDaysToPay: dtp.length ? Math.max(...dtp) : undefined,
@@ -262,7 +365,7 @@ export function payerRecordsFor(
       totalLateFees: statuses.reduce((a, s) => a + s.lateFee, 0),
       totalBilled: list.reduce((a, c) => a + c.amountDue, 0),
       totalPaid: statuses.reduce((a, s) => a + s.paid, 0),
-      balance: statuses.reduce((a, s) => a + s.balance, 0),
+      balance: statuses.reduce((a, s) => a + (s.isDue ? s.balance : 0), 0),
       reliabilityScore,
     })
   }
@@ -281,6 +384,23 @@ export function payerRecordsFor(
 export interface CollectionSettings {
   /** First month tracked, as `YYYY-MM`. Unset means the whole rent roll. */
   startPeriod?: string
+  /**
+   * Everything billed on or before this month is declared collected, as
+   * `YYYY-MM`.
+   *
+   * Nobody is going to retro-enter six hundred payments to say the arrears are
+   * nil. This is the owner asserting, on a date, that the book was clean to
+   * here — so those months read as settled instead of as debt, and the ledger
+   * starts from the next one.
+   *
+   * It is a declaration, not a payment record, and is kept distinct from one
+   * throughout: a month settled this way has no payment date, so it never
+   * invents a days-to-pay figure or an on-time record it cannot know.
+   */
+  settledThrough?: string
+  /** When the declaration was made, and by whom, so it can be read back later. */
+  settledDeclaredOn?: string
+  settledNote?: string
 }
 
 export const inTrackingWindow = (charge: RentCharge, start?: string): boolean =>
@@ -297,3 +417,23 @@ export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
+
+/**
+ * Where the ledger starts.
+ *
+ * On 31 August 2026 the owner confirmed every tenant was current — nothing in
+ * arrears across any property. Rather than fabricate six hundred payment
+ * records to say so, that is recorded as a declaration: everything billed
+ * through August 2026 reads as collected, and live tracking begins with the
+ * September rent due on the 1st.
+ *
+ * It is a starting position, not a fact about any particular month, and it can
+ * be moved or cleared on the Rent collection screen.
+ */
+export const DEFAULT_COLLECTION: CollectionSettings = {
+  settledThrough: '2026-08',
+  settledDeclaredOn: '2026-08-31',
+  settledNote: 'Confirmed by Mr. Shirazi on 31 August 2026: every tenant current, no arrears. '
+    + 'Months through August 2026 are settled by that declaration rather than by recorded '
+    + 'payments, so they carry no payment date and are excluded from days-to-pay.',
+}
