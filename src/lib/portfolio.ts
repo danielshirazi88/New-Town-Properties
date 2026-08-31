@@ -51,6 +51,8 @@ export interface PortfolioKpis {
   worstMonth: { index: number; amount: number }
   avgMonth: number
   janToDecGrowthPct: number
+  /** Months of the selected sheet that carry data. */
+  reportedMonths: number
   exitMonthlyRent: number
   forwardRunRate: number
   runRateVsActualPct: number
@@ -202,6 +204,9 @@ export function resolveData(
 }
 
 export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData()): PortfolioKpis {
+  // How much of the year the sheet actually covers; a part year must not be
+  // measured as though its blank months were zeros.
+  const reportedMonths = rentRoll(data.year).monthsReported
   const { properties: PROPS, leases: ALL_LEASES, apolloTenants: APOLLO } = data
   const commercialLeases = ALL_LEASES
   const commercialGross = commercialLeases.reduce((a, l) => a + collected(l), 0)
@@ -319,7 +324,14 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
     bestMonth: { index: bestIdx, amount: monthly[bestIdx] },
     worstMonth: { index: worstIdx, amount: monthly[worstIdx] },
     avgMonth: commercialGross / 12,
-    janToDecGrowthPct: monthly[0] > 0 ? ((monthly[11] - monthly[0]) / monthly[0]) * 100 : 0,
+    reportedMonths,
+    janToDecGrowthPct: (() => {
+      // First reported month to last reported month. Running to December on a
+      // part year compares January against a month the sheet does not cover and
+      // reports the whole portfolio as down 100%.
+      const last = monthly[reportedMonths - 1] ?? 0
+      return monthly[0] > 0 ? ((last - monthly[0]) / monthly[0]) * 100 : 0
+    })(),
     exitMonthlyRent,
     forwardRunRate,
     runRateVsActualPct: grossCollected > 0 ? ((forwardRunRate - grossCollected) / grossCollected) * 100 : 0,

@@ -2,13 +2,43 @@ import { useState, type ReactNode } from 'react'
 import { MONTHS } from '../lib/finance'
 import { money, moneyShort } from '../lib/format'
 
-/** Validated 6-step ordinal ramp — one hue, monotone lightness, clears the surface. */
-export const RAMP = ['#8f151d', '#b32029', '#d33a3b', '#e86a60', '#f79a8c', '#ffc4b8']
+/**
+ * Two ramps, because colour here carries meaning rather than decoration.
+ *
+ * Red is reserved for things that are wrong — rent past its grace period, a
+ * lapsed lease, an escalation never taken. Money arriving is not one of those,
+ * and painting income in the same red as an overdue balance tells the reader
+ * something false before they have read a single number.
+ *
+ * So magnitude — how much rent, how much a building is worth — takes a cool
+ * ramp instead, and red is left to mean trouble. It is deliberately close to
+ * monochrome: the palette is black, red and white, and this keeps the one hue
+ * on a page pointing at the one thing that needs attention.
+ *
+ * Both ramps anchor light on this dark surface, which is the way round a
+ * sequential scale has to run when the background is near-black. Checked with
+ * the ordinal validator against #131313: lightness monotone, every adjacent
+ * step at least 0.06 apart, and the darkest end at 2.63:1 — clear of the 2:1
+ * floor, so the lowest bucket is still visible rather than sinking into the page.
+ */
+export const VALUE_RAMP = ['#3d5c73', '#4c7590', '#5c8fa8', '#79aec2', '#a4cbda', '#d6eaf2']
 
-export function rampStep(value: number, max: number): string {
+/** Kept for anything that genuinely is an alert scale. */
+export const ALERT_RAMP = ['#8f151d', '#b32029', '#d33a3b', '#e86a60', '#f79a8c', '#ffc4b8']
+
+/** What a bar or cell is measuring: money coming in, or a problem. */
+export type Tone = 'value' | 'alert'
+
+export const rampFor = (tone: Tone = 'value') => (tone === 'alert' ? ALERT_RAMP : VALUE_RAMP)
+
+/** The flat accent for a single-series mark. */
+export const toneColour = (tone: Tone = 'value') => (tone === 'alert' ? '#e5484d' : '#5c8fa8')
+
+export function rampStep(value: number, max: number, tone: Tone = 'value'): string {
+  const ramp = rampFor(tone)
   if (max <= 0 || value <= 0) return '#1b1b1b'
-  const i = Math.min(RAMP.length - 1, Math.floor((value / max) * RAMP.length))
-  return RAMP[i]
+  const i = Math.min(ramp.length - 1, Math.floor((value / max) * ramp.length))
+  return ramp[i]
 }
 
 /** Above this ramp index the fill is light enough to need dark ink on top. */
@@ -38,12 +68,15 @@ export function MonthlyAreaChart({
   series,
   height = 220,
   label = 'Total collected',
+  tone = 'value',
 }: {
   series: number[]
   height?: number
   label?: string
+  tone?: Tone
 }) {
   const [tip, setTip] = useState<Tip | null>(null)
+  const accent = toneColour(tone)
   const W = 1000
   const padL = 62
   const padR = 16
@@ -69,8 +102,8 @@ export function MonthlyAreaChart({
       <svg className="chart-svg" viewBox={`0 0 ${W} ${height}`} role="img" aria-label={`${label} by month`}>
         <defs>
           <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#e5484d" stopOpacity="0.42" />
-            <stop offset="100%" stopColor="#e5484d" stopOpacity="0.02" />
+            <stop offset="0%" stopColor={accent} stopOpacity="0.42" />
+            <stop offset="100%" stopColor={accent} stopOpacity="0.02" />
           </linearGradient>
         </defs>
 
@@ -84,10 +117,10 @@ export function MonthlyAreaChart({
         ))}
 
         <path d={area} fill="url(#areaFill)" />
-        <path d={line} fill="none" stroke="#e5484d" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        <path d={line} fill="none" stroke={accent} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
 
         {series.map((v, i) => (
-          <circle key={i} cx={x(i)} cy={y(v)} r={4} fill="#e5484d" stroke="#0a0a0a" strokeWidth={2} />
+          <circle key={i} cx={x(i)} cy={y(v)} r={4} fill={accent} stroke="#0a0a0a" strokeWidth={2} />
         ))}
 
         {series.map((_, i) => (
@@ -147,11 +180,14 @@ export interface HeatRow {
 export function MonthPropertyHeatmap({
   rows,
   onSelect,
+  tone = 'value',
 }: {
   rows: HeatRow[]
   onSelect?: (id: string) => void
+  tone?: Tone
 }) {
   const [tip, setTip] = useState<Tip | null>(null)
+  const ramp = rampFor(tone)
   const labelW = 210
   const cellW = 62
   const cellH = 30
@@ -179,7 +215,7 @@ export function MonthPropertyHeatmap({
     if (value <= 0) return -1
     const { hi, lo, flat } = shading[ri]
     if (flat) return 2
-    return Math.min(RAMP.length - 1, Math.floor(((value - lo) / (hi - lo)) * (RAMP.length - 0.001)))
+    return Math.min(ramp.length - 1, Math.floor(((value - lo) / (hi - lo)) * (ramp.length - 0.001)))
   }
 
   return (
@@ -209,7 +245,7 @@ export function MonthPropertyHeatmap({
 
               {row.values.map((v, ci) => {
                 const idx = stepFor(v, ri)
-                const fill = idx < 0 ? '#1b1b1b' : RAMP[idx]
+                const fill = idx < 0 ? '#1b1b1b' : ramp[idx]
                 return (
                   <g key={ci}>
                     <rect
@@ -270,10 +306,10 @@ export function MonthPropertyHeatmap({
       {tip && <Tooltip tip={tip} width={W} />}
       <div className="legend">
         <span className="t-mute">Shaded within each row, low → high:</span>
-        {RAMP.map((c, i) => (
+        {ramp.map((c, i) => (
           <span key={c} className="legend-item">
             <span className="legend-swatch" style={{ background: c }} />
-            {i === 0 ? 'low' : i === RAMP.length - 1 ? 'high' : ''}
+            {i === 0 ? 'low' : i === ramp.length - 1 ? 'high' : ''}
           </span>
         ))}
         <span className="legend-item">
@@ -295,12 +331,16 @@ export function RankedBars({
   height = 20,
   formatValue = money,
   onSelect,
+  tone = 'value',
 }: {
   items: { id: string; label: string; value: number; sub?: string }[]
   height?: number
   formatValue?: (n: number) => string
   onSelect?: (id: string) => void
+  /** `alert` for a bar that measures a problem — money owed, fees accrued. */
+  tone?: Tone
 }) {
+  const accent = toneColour(tone)
   const max = Math.max(...items.map((i) => i.value), 1)
   return (
     <div className="stack" style={{ gap: 9 }}>
@@ -318,7 +358,7 @@ export function RankedBars({
           <div className="timeline-track" style={{ height }}>
             <div
               className="timeline-fill"
-              style={{ left: 0, width: `${(it.value / max) * 100}%`, background: '#e5484d' }}
+              style={{ left: 0, width: `${(it.value / max) * 100}%`, background: accent }}
             />
           </div>
           <div className="t-mono" style={{ width: 96, textAlign: 'right', flex: 'none', fontSize: 12.5 }}>
@@ -332,7 +372,10 @@ export function RankedBars({
 
 /* ══ Small multiple — one property's twelve months ════════════════════════ */
 
-export function Sparkline({ values, height = 42 }: { values: number[]; height?: number }) {
+export function Sparkline({
+  values, height = 42, tone = 'value',
+}: { values: number[]; height?: number; tone?: Tone }) {
+  const accent = toneColour(tone)
   const W = 220
   const max = Math.max(...values)
   const min = Math.min(...values)
@@ -344,7 +387,7 @@ export function Sparkline({ values, height = 42 }: { values: number[]; height?: 
   return (
     <svg className="chart-svg" viewBox={`0 0 ${W} ${height}`} preserveAspectRatio="none" style={{ height }}>
       <path d={area} fill="rgba(229,72,77,0.16)" />
-      <path d={line} fill="none" stroke="#e5484d" strokeWidth={2} strokeLinejoin="round" />
+      <path d={line} fill="none" stroke={accent} strokeWidth={2} strokeLinejoin="round" />
     </svg>
   )
 }
@@ -442,6 +485,7 @@ export function DonutChart({
   centreLabel,
   centreValue,
   onSelect,
+  tone = 'value',
 }: {
   slices: { id: string; label: string; value: number }[]
   size?: number
@@ -449,8 +493,10 @@ export function DonutChart({
   centreLabel?: string
   centreValue?: string
   onSelect?: (id: string) => void
+  tone?: Tone
 }) {
   const [hover, setHover] = useState<string | null>(null)
+  const ramp = rampFor(tone)
   const total = slices.reduce((a, s) => a + s.value, 0)
   if (total <= 0) return null
 
@@ -461,7 +507,7 @@ export function DonutChart({
   let offset = 0
   const arcs = slices.map((s, i) => {
     const share = s.value / total
-    const arc = { ...s, share, dash: share * circumference, offset, colour: RAMP[i % RAMP.length] }
+    const arc = { ...s, share, dash: share * circumference, offset, colour: ramp[i % ramp.length] }
     offset += arc.dash
     return arc
   })

@@ -253,7 +253,20 @@ These are the gaps, in rough order of how much they'd improve the picture:
 
 ## Design
 
-Black, red and white throughout. Because the palette is a single accent hue, the charts
+Black, red and white throughout — with one rule about the red.
+
+**Red means something is wrong.** Rent past its grace period, a lapsed lease, an
+escalation never taken, a balance owed. It is never used for money arriving:
+painting income in the same red as an overdue balance tells the reader something
+false before they have read a number.
+
+Magnitude — how much rent, what a building is worth — takes a cool slate-to-ice
+ramp instead. It is close to monochrome on purpose, so the one hue on a page
+points at the one thing that needs attention. Both ramps anchor light, which is
+the way round a sequential scale runs on a near-black background, and the ramp
+was checked with the ordinal validator against the chart surface: lightness
+monotone, every adjacent step at least 0.06 apart, darkest end at 2.63:1 against
+the surface so the lowest bucket stays visible. Because the palette is a single accent hue, the charts
 never use colour to tell one property from another — identity comes from position, ordering
 and direct labels, and colour is reserved for magnitude (the month × property grid) and for
 flagging what needs attention. The one graded ramp is validated for monotone lightness,

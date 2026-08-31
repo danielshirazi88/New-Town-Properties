@@ -91,6 +91,22 @@ export function Dashboard({
           note={`Exit rent annualised · ${signedPct(k.runRateVsActualPct)} vs ${k.fiscalYear}`} />
       </div>
 
+      {k.apolloGross === 0 && (
+        <div className="callout" style={{ marginBottom: 18 }}>
+          <div className="callout-title">
+            The {k.fiscalYear} sheet carries no Apollo figure, so the totals above are
+            commercial only
+          </div>
+          <p>
+            Apollo Mobile Home Court brought in {money(378870)} in 2025 across 37 lots and 5
+            parking spaces, and nothing suggests it stopped — the {k.fiscalYear} rent roll simply
+            does not include it. Every gross and net figure on this page is short by roughly that
+            much until the park's {k.fiscalYear} income is added. The lot-by-lot registry is still
+            on the Apollo park tab.
+          </p>
+        </div>
+      )}
+
       {/* ── Rent collection, this month ──────────────────────────────────── */}
       {month && (
         <div className="section">
@@ -163,7 +179,7 @@ export function Dashboard({
           <MonthlyAreaChart series={k.monthlyWithApollo} label="Portfolio income" />
           <div className="row" style={{ marginTop: 12, gap: 22 }}>
             <div className="stack">
-              <span className="kpi-label">Commercial Jan → Dec</span>
+              <span className="kpi-label">Commercial Jan → {MONTHS[k.reportedMonths - 1]}</span>
               <span className="t-mono t-strong">{signedPct(k.janToDecGrowthPct)}</span>
             </div>
             <div className="stack">
@@ -175,8 +191,12 @@ export function Dashboard({
               <span className="t-mono t-strong">{money(k.exitMonthlyRent + k.apolloGross / 12)}</span>
             </div>
             <div className="stack">
-              <span className="kpi-label">Apollo (annual figure only)</span>
-              <span className="t-mono t-mute">{money(k.apolloGross / 12)}/mo assumed flat</span>
+              <span className="kpi-label">Apollo</span>
+              {k.apolloGross > 0 ? (
+                <span className="t-mono t-mute">{money(k.apolloGross / 12)}/mo assumed flat</span>
+              ) : (
+                <span className="t-mono t-red">not on the {k.fiscalYear} sheet</span>
+              )}
             </div>
           </div>
         </Card>

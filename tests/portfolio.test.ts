@@ -561,3 +561,27 @@ describe('the filed 2023 return', () => {
     expect(RETURN_2024.scheduleETotals.rents).toBeLessThan(RETURN_2023.scheduleETotals.rents)
   })
 })
+
+describe('a part year measured honestly', () => {
+  it('measures growth to the last reported month, not to December', () => {
+    // 2026 covers January to August. Running to December compares January
+    // against a month the sheet does not cover and reports the whole portfolio
+    // as down 100% — which is what it used to do.
+    const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2026))
+    expect(k.reportedMonths).toBe(8)
+    expect(k.janToDecGrowthPct).toBeGreaterThan(-50)
+    expect(Math.abs(k.janToDecGrowthPct)).toBeLessThan(25)
+  })
+
+  it('still runs to December on a complete year', () => {
+    const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2025))
+    expect(k.reportedMonths).toBe(12)
+  })
+
+  it('reports Apollo as absent from 2026 rather than as zero income', () => {
+    // The park is not on the 2026 sheet. That is a gap in the document, not a
+    // year with no rent, and the dashboard has to say which.
+    expect(computeKpis(undefined, resolveData(undefined, 2026)).apolloGross).toBe(0)
+    expect(computeKpis(undefined, resolveData(undefined, 2025)).apolloGross).toBeGreaterThan(300_000)
+  })
+})

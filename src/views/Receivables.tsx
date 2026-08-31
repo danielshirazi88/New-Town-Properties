@@ -233,6 +233,7 @@ export function Receivables({
                 sub: `${t.unit} · ${num(t.months)} ${t.months === 1 ? 'month' : 'months'}`,
               }))}
               onSelect={onTenant}
+              tone="alert"
             />
           </Card>
           <Card title="Owed by property">
@@ -244,6 +245,7 @@ export function Receivables({
                 sub: `${num(p.tenants.size)} ${p.tenants.size === 1 ? 'tenant' : 'tenants'}`,
               }))}
               onSelect={onProperty}
+              tone="alert"
             />
           </Card>
         </div>

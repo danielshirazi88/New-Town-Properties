@@ -221,6 +221,7 @@ export function SlowPayers({
               }))}
               formatValue={(n) => `${n.toFixed(1)} d`}
               onSelect={onTenant}
+              tone="alert"
             />
           </Card>
           <Card title="Fastest payers" hint="Average days to pay, lowest first">

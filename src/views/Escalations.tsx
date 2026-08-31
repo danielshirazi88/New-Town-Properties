@@ -109,6 +109,7 @@ export function Escalations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
           <Card title="Flat or falling">
             {withEsc.filter((r) => (r.realised ?? 0) <= 0).length === 0 ? <Empty>None.</Empty> : (
               <RankedBars
+                tone="alert"
                 onSelect={(id) => onProperty(all.find((l) => l.id === id)?.propertyId ?? '')}
                 formatValue={(n) => signedPct(n)}
                 items={withEsc.filter((r) => (r.realised ?? 0) <= 0).map((r) => ({
