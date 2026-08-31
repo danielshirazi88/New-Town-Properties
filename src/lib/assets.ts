@@ -125,12 +125,18 @@ export interface VehicleAsset {
 export type Asset = RealEstateAsset | InvestmentAsset | VehicleAsset
 
 export interface AssetRegister {
-  realEstate: RealEstateAsset[]
   investments: InvestmentAsset[]
   vehicles: VehicleAsset[]
+  /**
+   * Kept only so a register saved before the trust schedule existed still parses.
+   * Property is read from the schedule now; anything left here is ignored.
+   *
+   * @deprecated
+   */
+  realEstate?: RealEstateAsset[]
 }
 
-export const EMPTY_REGISTER: AssetRegister = { realEstate: [], investments: [], vehicles: [] }
+export const EMPTY_REGISTER: AssetRegister = { investments: [], vehicles: [] }
 
 export const newAssetId = (): string =>
   `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -222,46 +228,66 @@ export interface AssetTotals {
 }
 
 /**
+ * What the trust's real estate contributes to the register.
+ *
+ * Property lives on the trust's schedule of assets, not here — one list of what
+ * is owned, not two that can drift. This reduces it to the few figures the
+ * register needs.
+ */
+export interface RealEstateContribution {
+  rental: number
+  personal: number
+  debt: number
+  /** Holdings with no value from any source, counted as zero. */
+  unvalued: number
+}
+
+export function realEstateTotals(rows: {
+  use: 'rental' | 'personal' | 'resale'
+  estimatedValue?: number
+  debt?: number
+}[]): RealEstateContribution {
+  let rental = 0
+  let personal = 0
+  let debt = 0
+  let unvalued = 0
+  for (const r of rows) {
+    if (r.estimatedValue === undefined) unvalued += 1
+    // A holding kept for resale is not personal use, but it is not let either;
+    // it sits with the personal side rather than inflating the rental estate.
+    if (r.use === 'rental') rental += r.estimatedValue ?? 0
+    else personal += r.estimatedValue ?? 0
+    debt += r.debt ?? 0
+  }
+  return { rental, personal, debt, unvalued }
+}
+
+/**
  * Add the register up.
  *
- * `propertyValue` supplies the worth of a portfolio building, so the register
- * never holds a second, staler opinion of what the commercial estate is worth.
+ * Real estate is handed in from the trust schedule rather than read out of the
+ * register, so there is only ever one opinion of what the property is worth.
  * Anything with no value on it is counted as zero and reported separately — a
  * total that quietly swallowed the unknowns would read as complete when it is
  * not.
  */
-export function assetTotals(
-  r: AssetRegister,
-  propertyValue: (propertyId: string) => number | undefined,
-): AssetTotals {
-  let rental = 0
-  let personal = 0
-  let unvaluedRealEstate = 0
-  for (const re of r.realEstate) {
-    const value = re.propertyId ? propertyValue(re.propertyId) : re.estimatedValue
-    if (value === undefined) unvaluedRealEstate += 1
-    const v = value ?? 0
-    if (re.use === 'rental') rental += v
-    else personal += v
-  }
-
+export function assetTotals(r: AssetRegister, property: RealEstateContribution): AssetTotals {
   const investments = r.investments.reduce((a, i) => a + i.balance, 0)
   const vehicles = r.vehicles.reduce((a, v) => a + vehicleValue(v), 0)
-  const debt = r.realEstate.reduce((a, re) => a + (re.debt ?? 0), 0)
-  const realEstate = rental + personal
+  const realEstate = property.rental + property.personal
   const gross = realEstate + investments + vehicles
 
   return {
     realEstate,
-    rentalRealEstate: rental,
-    personalRealEstate: personal,
+    rentalRealEstate: property.rental,
+    personalRealEstate: property.personal,
     investments,
     vehicles,
     gross,
-    debt,
-    net: gross - debt,
+    debt: property.debt,
+    net: gross - property.debt,
     unvaluedVehicles: r.vehicles.filter((v) => !vehicleValued(v)).length,
-    unvaluedRealEstate,
+    unvaluedRealEstate: property.unvalued,
   }
 }
 

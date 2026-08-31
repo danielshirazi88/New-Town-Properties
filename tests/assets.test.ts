@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   annualInterest, assetBreakdown, assetTotals, blendedRate, byInstitution, maturities,
-  registerInterest, vehicleValued,
-  type AssetRegister, type InvestmentAsset, type RealEstateAsset, type VehicleAsset,
+  realEstateTotals, registerInterest, vehicleValued,
+  type AssetRegister, type InvestmentAsset, type VehicleAsset,
 } from '../src/lib/assets'
-import { DEFAULT_REGISTER, PERSONAL_PROPERTY_SEEDS, seedRealEstate } from '../src/data/personalProperty'
 
-const re = (o: Partial<RealEstateAsset>): RealEstateAsset => ({
-  id: 'r1', kind: 'real-estate', name: 'A building', use: 'rental', ...o,
-})
+/** A trust holding as the register sees it: use, value and debt. */
+const prop = (use: 'rental' | 'personal' | 'resale', estimatedValue?: number, debt?: number) =>
+  ({ use, estimatedValue, debt })
 const inv = (o: Partial<InvestmentAsset>): InvestmentAsset => ({
   id: 'i1', kind: 'investment', name: 'CD', institution: 'A Bank',
   investmentKind: 'cd', balance: 100_000, ...o,
@@ -18,36 +17,30 @@ const car = (o: Partial<VehicleAsset>): VehicleAsset => ({
 })
 
 const reg = (o: Partial<AssetRegister>): AssetRegister =>
-  ({ realEstate: [], investments: [], vehicles: [], ...o })
+  ({ investments: [], vehicles: [], ...o })
 
-const noValues = () => undefined
+/** No property at all — the register on its own. */
+const noProperty = realEstateTotals([])
 
 describe('asset totals', () => {
   it('splits real estate by how it is used', () => {
-    const t = assetTotals(reg({
-      realEstate: [
-        re({ id: 'a', use: 'rental', estimatedValue: 1_000_000 }),
-        re({ id: 'b', use: 'personal', estimatedValue: 400_000 }),
-      ],
-    }), noValues)
+    const t = assetTotals(reg({}), realEstateTotals([
+      prop('rental', 1_000_000), prop('personal', 400_000),
+    ]))
     expect(t.rentalRealEstate).toBe(1_000_000)
     expect(t.personalRealEstate).toBe(400_000)
     expect(t.realEstate).toBe(1_400_000)
   })
 
-  it('takes a portfolio building’s value from the portfolio, not the register', () => {
-    // The typed figure is deliberately wrong; the portfolio's must win, so the
-    // register can never hold a second, staler opinion.
-    const t = assetTotals(reg({
-      realEstate: [re({ propertyId: 'plaza-1', estimatedValue: 1, use: 'rental' })],
-    }), (id) => (id === 'plaza-1' ? 3_500_000 : undefined))
-    expect(t.rentalRealEstate).toBe(3_500_000)
+  it('keeps a holding kept for resale off the rental side', () => {
+    // It is not let, so counting it as rental would overstate the income estate.
+    const c = realEstateTotals([prop('rental', 1_000_000), prop('resale', 1_500_000)])
+    expect(c.rental).toBe(1_000_000)
+    expect(c.personal).toBe(1_500_000)
   })
 
   it('nets debt off the gross', () => {
-    const t = assetTotals(reg({
-      realEstate: [re({ estimatedValue: 1_000_000, debt: 250_000 })],
-    }), noValues)
+    const t = assetTotals(reg({}), realEstateTotals([prop('rental', 1_000_000, 250_000)]))
     expect(t.gross).toBe(1_000_000)
     expect(t.debt).toBe(250_000)
     expect(t.net).toBe(750_000)
@@ -56,7 +49,7 @@ describe('asset totals', () => {
   it('counts an unvalued car as zero and says how many there are', () => {
     const t = assetTotals(reg({
       vehicles: [car({ id: 'a', currentValue: 60_000 }), car({ id: 'b' }), car({ id: 'c' })],
-    }), noValues)
+    }), noProperty)
     expect(t.vehicles).toBe(60_000)
     expect(t.unvaluedVehicles).toBe(2)
   })
@@ -67,13 +60,11 @@ describe('asset totals', () => {
     // into a net-worth total.
     const c = car({ purchasePrice: 90_000 })
     expect(vehicleValued(c)).toBe(false)
-    expect(assetTotals(reg({ vehicles: [c] }), noValues).vehicles).toBe(0)
+    expect(assetTotals(reg({ vehicles: [c] }), noProperty).vehicles).toBe(0)
   })
 
   it('reports real estate with no value anywhere', () => {
-    const t = assetTotals(reg({
-      realEstate: [re({ id: 'a', estimatedValue: 500_000 }), re({ id: 'b' })],
-    }), noValues)
+    const t = assetTotals(reg({}), realEstateTotals([prop('rental', 500_000), prop('rental')]))
     expect(t.unvaluedRealEstate).toBe(1)
     expect(t.realEstate).toBe(500_000)
   })
@@ -162,49 +153,10 @@ describe('maturities', () => {
 
 describe('the breakdown chart', () => {
   it('drops empty slices and orders by size', () => {
-    const t = assetTotals(reg({
-      realEstate: [
-        re({ id: 'a', use: 'rental', estimatedValue: 5_000_000 }),
-        re({ id: 'b', use: 'personal', estimatedValue: 800_000 }),
-      ],
-      investments: [inv({ balance: 4_300_000 })],
-    }), noValues)
+    const t = assetTotals(
+      reg({ investments: [inv({ balance: 4_300_000 })] }),
+      realEstateTotals([prop('rental', 5_000_000), prop('personal', 800_000)]),
+    )
     expect(assetBreakdown(t).map((s) => s.id)).toEqual(['rental', 'investments', 'personal'])
-  })
-})
-
-describe('the seeded personal property', () => {
-  it('starts the register with the residences the returns name', () => {
-    expect(DEFAULT_REGISTER.realEstate.map((r) => r.name)).toEqual([
-      '129 E Foster Ave',
-      '1211 S Prairie, Unit 2605',
-    ])
-    expect(DEFAULT_REGISTER.realEstate.every((r) => r.use === 'personal')).toBe(true)
-    expect(DEFAULT_REGISTER.investments).toHaveLength(0)
-    expect(DEFAULT_REGISTER.vehicles).toHaveLength(0)
-  })
-
-  it('carries no invented value', () => {
-    // Neither has an appraisal behind it, so both count as zero and are reported
-    // as unvalued rather than guessed at.
-    const t = assetTotals(DEFAULT_REGISTER, noValues)
-    expect(t.personalRealEstate).toBe(0)
-    expect(t.unvaluedRealEstate).toBe(2)
-  })
-
-  it('keeps a stable id so a deleted row is never re-seeded', () => {
-    const ids = PERSONAL_PROPERTY_SEEDS.map((s) => s.seedId)
-    expect(new Set(ids).size).toBe(ids.length)
-    // The id survives seeding, which is what lets the view tell "never added"
-    // from "added and then deleted".
-    expect(PERSONAL_PROPERTY_SEEDS.map((s) => seedRealEstate(s).id)).toEqual(ids)
-  })
-
-  it('does not put 1211 S Prairie on both sides of the register', () => {
-    // It is on Schedule E, but as a residence — it must not also arrive as a
-    // rental when the portfolio buildings are imported.
-    const prairie = DEFAULT_REGISTER.realEstate.find((r) => r.name.includes('Prairie'))!
-    expect(prairie.use).toBe('personal')
-    expect(prairie.propertyId).toBeUndefined()
   })
 })

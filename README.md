@@ -37,7 +37,8 @@ There is no server and no database.
 | **Slow payers & late fees** | Days to pay per tenant, fastest against slowest, and what the late fees come to — accrued and projected |
 | **Expenses** | Manual entry by property and category, with receipt/invoice upload |
 | **Tax returns** | Returns as filed — the 1040 and IL-1040 line by line, Schedule E per property, interest by bank, and what moved between years. Read-only: this is the archive, not the worksheet |
-| **Assets** | Everything owned, not just what pays rent — real estate split rental against personal, deposits with their bank, rate, interest dates and maturities, and vehicles with VIN, mileage, what was paid and what it is worth now. Charted by class |
+| **Shirazi Trust** | The trust's schedule of assets — all 18 holdings with purchase date, address, type and price, plus the estimated-value column the schedule asks for. Every field editable |
+| **Assets** | The whole estate: property from the trust schedule, deposits with their bank, rate, interest dates and maturities, and vehicles with VIN, mileage, what was paid and what it is worth now. Charted by class |
 | **Valuation** | NOI and implied value across cap rates, on adjustable assumptions |
 | **Data integrity** | Reconciliation against the printed totals, and what the source documents don't contain |
 
@@ -162,16 +163,26 @@ Two things to know before reading the receivables figures:
 
 ---
 
-## The asset register
+## The trust schedule and the asset register
 
-The portfolio views cover the buildings that pay rent. The register covers
-everything else, in three kinds that are genuinely different and so carry
-different fields:
+**The trust's Schedule of Assets is the ownership record.** Eighteen holdings,
+transcribed from the trust's own paper as updated 27 April 2026, with the
+purchase date, address, type and price it records. It is wider than the rent
+roll on purpose: the rent roll covers what pays rent, and this covers
+everything, including the two residences and the condo held for resale.
 
-- **Real estate** splits rental from personal. A rental building's value is read
-  from the portfolio at the cap rate set on the Valuation screen — the register
-  never stores a second, staler opinion of what the commercial estate is worth.
-  Personal property is entered by hand.
+The schedule is kept as transcribed and edits are stored as patches over it, the
+same way rent-roll overrides work — so a correction never destroys what the
+document says, every hand edit is visible as one, and any of them can be
+reverted.
+
+A rental's estimated value is its own net income capitalised at the cap rate set
+on the Valuation screen. Type a figure over it and yours wins: an appraisal
+knows more than a cap rate does. **Real estate lives only here** — the asset
+register reads it rather than keeping a second list that could drift.
+
+The register itself covers what the schedule does not:
+
 - **Investments** record the institution, the type, the balance, the rate, how
   often interest pays, the next interest date and the maturity. Deposits at or
   near maturity are surfaced, because a matured CD usually sits in a low-rate
@@ -179,9 +190,9 @@ different fields:
 - **Vehicles** record purchase price, where it was bought, VIN, current mileage
   and current value.
 
-**A car with no current value entered counts as zero, not as its purchase
-price.** Guessing depreciation would put an invented number into a net-worth
-total, so unvalued rows are excluded and counted separately in plain sight.
+**Anything with no value entered counts as zero, never as its purchase price.**
+Guessing depreciation would put an invented number into a net-worth total, so
+unvalued rows are excluded and counted separately in plain sight.
 
 ---
 

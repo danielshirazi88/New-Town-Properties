@@ -5,12 +5,12 @@ import { dateLabel, money, num, pct } from '../lib/format'
 import {
   INTEREST_FREQUENCIES, INVESTMENT_KINDS, annualInterest, assetBreakdown, assetTotals,
   blendedRate, byInstitution, frequencyLabel, investmentKindLabel, maturities, newAssetId,
-  registerInterest, vehicleValued,
+  realEstateTotals, registerInterest, vehicleValued,
   type AssetRegister, type InvestmentAsset, type InvestmentKind, type InterestFrequency,
-  type RealEstateAsset, type VehicleAsset,
+  type VehicleAsset,
 } from '../lib/assets'
+import { USE_LABEL, type ResolvedHolding } from '../lib/trust'
 import type { PortfolioKpis } from '../lib/portfolio'
-import { PERSONAL_PROPERTY_SEEDS, seedRealEstate } from '../data/personalProperty'
 
 type Tab = 'overview' | 'real-estate' | 'investments' | 'vehicles'
 
@@ -27,30 +27,20 @@ const n = (v: string): number | undefined => {
 }
 
 export function Assets({
-  k, register, setRegister, capRate,
+  k, register, setRegister, capRate, trust, onTrust,
 }: {
   k: PortfolioKpis
   register: AssetRegister
   setRegister: (next: AssetRegister) => void
   /** Cap rate the valuation view is set to, so both screens agree. */
   capRate: number
+  /** Real estate comes from the trust's schedule — the register never duplicates it. */
+  trust: ResolvedHolding[]
+  onTrust: () => void
 }) {
   const [tab, setTab] = useState<Tab>('overview')
 
-  /**
-   * What a portfolio building is worth: its own NOI capitalised, the same
-   * calculation the valuation screen shows. The register never stores a second
-   * opinion of the commercial estate's value.
-   */
-  const propertyValue = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const p of k.properties) {
-      if (p.netAfterTax > 0 && capRate > 0) m.set(p.property.id, (p.netAfterTax / capRate) * 100)
-    }
-    return (id: string) => m.get(id)
-  }, [k, capRate])
-
-  const totals = useMemo(() => assetTotals(register, propertyValue), [register, propertyValue])
+  const totals = useMemo(() => assetTotals(register, realEstateTotals(trust)), [register, trust])
   const slices = assetBreakdown(totals)
   const interest = registerInterest(register)
   const rate = blendedRate(register)
@@ -66,18 +56,18 @@ export function Assets({
         <h1 className="page-title">Assets</h1>
         <p className="page-sub">
           Everything owned, not just what pays rent — property, deposits and vehicles in one
-          register. Rental buildings take their value from the portfolio at the{' '}
-          {capRate.toFixed(2)}% cap rate; everything else is entered here by hand.
+          register. Real estate comes from the trust's schedule of assets, so there is only ever
+          one list of what is owned; the accounts and vehicles are entered here.
         </p>
       </div>
 
       <div className="kpi-grid">
         <Kpi accent label="Total assets" value={money(totals.gross)}
-          note={`${num(register.realEstate.length + register.investments.length + register.vehicles.length)} recorded`} />
+          note={`${num(trust.length + register.investments.length + register.vehicles.length)} recorded`} />
         <Kpi accent label="Net of debt" value={money(totals.net)}
           note={totals.debt > 0 ? `${money(totals.debt)} of debt recorded` : 'No debt recorded'} />
         <Kpi label="Real estate" value={money(totals.realEstate)}
-          note={`${money(totals.rentalRealEstate)} rental · ${money(totals.personalRealEstate)} personal`} />
+          note={`${num(trust.length)} holdings on the trust schedule`} />
         <Kpi label="Investments" value={money(totals.investments)}
           note={rate !== undefined ? `${pct(rate, 2)} blended · ${money(interest)} a year` : 'No rates entered'} />
         <Kpi label="Vehicles" value={money(totals.vehicles)}
@@ -98,7 +88,7 @@ export function Assets({
             {t.label}
             {t.id !== 'overview' && (
               <span style={{ opacity: 0.7, marginLeft: 6 }}>
-                {t.id === 'real-estate' ? register.realEstate.length
+                {t.id === 'real-estate' ? trust.length
                   : t.id === 'investments' ? register.investments.length
                   : register.vehicles.length}
               </span>
@@ -109,16 +99,11 @@ export function Assets({
 
       {tab === 'overview' && (
         <Overview
-          k={k} register={register} totals={totals} slices={slices}
-          matured={matured} dueSoon={dueSoon} onTab={setTab}
+          register={register} totals={totals} slices={slices}
+          matured={matured} dueSoon={dueSoon} onTab={setTab} onTrust={onTrust}
         />
       )}
-      {tab === 'real-estate' && (
-        <RealEstate
-          k={k} rows={register.realEstate} propertyValue={propertyValue}
-          onChange={(realEstate) => patch({ realEstate })}
-        />
-      )}
+      {tab === 'real-estate' && <RealEstate rows={trust} capRate={capRate} onTrust={onTrust} />}
       {tab === 'investments' && (
         <Investments rows={register.investments} asOf={k.asOf}
           onChange={(investments) => patch({ investments })} />
@@ -133,15 +118,15 @@ export function Assets({
 /* ── Overview ────────────────────────────────────────────────────────────── */
 
 function Overview({
-  k, register, totals, slices, matured, dueSoon, onTab,
+  register, totals, slices, matured, dueSoon, onTab, onTrust,
 }: {
-  k: PortfolioKpis
   register: AssetRegister
   totals: ReturnType<typeof assetTotals>
   slices: { id: string; label: string; value: number }[]
   matured: ReturnType<typeof maturities>
   dueSoon: ReturnType<typeof maturities>
   onTab: (t: Tab) => void
+  onTrust: () => void
 }) {
   const banks = byInstitution(register)
   const empty = slices.length === 0
@@ -152,10 +137,10 @@ function Overview({
         <div className="callout">
           <div className="callout-title">Nothing recorded yet</div>
           <p>
-            The register starts empty. Add the personal property, the bank accounts and the cars on
-            the tabs above and this page fills in. The {num(k.properties.length)} rental buildings
-            can be pulled in with one click on the <strong>Real estate</strong> tab — their values
-            come from the portfolio, so they never need retyping.
+            Add the bank accounts and the cars on the tabs above and this page fills in. The
+            property is already there — it comes from the{' '}
+            <button className="link" onClick={onTrust}>trust's schedule of assets</button>, which is
+            where a holding is added or corrected.
           </p>
         </div>
       ) : (
@@ -257,189 +242,92 @@ function Overview({
 /* ── Real estate ─────────────────────────────────────────────────────────── */
 
 function RealEstate({
-  k, rows, propertyValue, onChange,
+  rows, capRate, onTrust,
 }: {
-  k: PortfolioKpis
-  rows: RealEstateAsset[]
-  propertyValue: (id: string) => number | undefined
-  onChange: (next: RealEstateAsset[]) => void
+  rows: ResolvedHolding[]
+  capRate: number
+  onTrust: () => void
 }) {
-  const [editing, setEditing] = useState<RealEstateAsset | null>(null)
-
-  const linked = new Set(rows.map((r) => r.propertyId).filter(Boolean))
-  const missing = k.properties.filter((p) => !linked.has(p.property.id))
-
-  // Seeded rows keep their seed id, so one deleted on purpose is not offered
-  // back on the next visit — only ones never added in the first place.
-  const present = new Set(rows.map((r) => r.id))
-  const missingPersonal = PERSONAL_PROPERTY_SEEDS.filter((x) => !present.has(x.seedId))
-
-  const importAll = () => {
-    onChange([
-      ...rows,
-      ...missing.map((p): RealEstateAsset => ({
-        id: newAssetId(),
-        kind: 'real-estate',
-        name: p.property.name,
-        address: `${p.property.address}, ${p.property.city}${p.property.state !== '—' ? `, ${p.property.state}` : ''}`,
-        use: 'rental',
-        propertyId: p.property.id,
-        updatedAt: new Date().toISOString(),
-      })),
-    ])
-  }
-
-  const addPersonal = () => onChange([...rows, ...missingPersonal.map(seedRealEstate)])
-
-  const save = (a: RealEstateAsset) => {
-    const at = { ...a, updatedAt: new Date().toISOString() }
-    onChange(rows.some((r) => r.id === a.id) ? rows.map((r) => (r.id === a.id ? at : r)) : [...rows, at])
-    setEditing(null)
-  }
-
-  const rental = rows.filter((r) => r.use === 'rental')
-  const personal = rows.filter((r) => r.use === 'personal')
+  const valued = rows.filter((r) => r.estimatedValue !== undefined)
+  const cost = rows.reduce((a, r) => a + (r.purchasePrice ?? 0), 0)
+  const value = rows.reduce((a, r) => a + (r.estimatedValue ?? 0), 0)
 
   return (
     <>
       <div className="toolbar">
-        <button className="btn" onClick={() => setEditing({
-          id: newAssetId(), kind: 'real-estate', name: '', use: 'personal',
-        })}>Add a property</button>
-        {missing.length > 0 && (
-          <button className="btn ghost" onClick={importAll}>
-            Pull in {num(missing.length)} rental {missing.length === 1 ? 'building' : 'buildings'} from the portfolio
-          </button>
-        )}
-        {missingPersonal.length > 0 && (
-          <button className="btn ghost" onClick={addPersonal}>
-            Add {num(missingPersonal.length)} known personal{' '}
-            {missingPersonal.length === 1 ? 'property' : 'properties'}
-          </button>
-        )}
+        <button className="btn" onClick={onTrust}>Open the trust schedule to edit</button>
         <div className="spacer" />
         <span className="t-mute">
-          {num(rental.length)} rental · {num(personal.length)} personal
+          {num(rows.length)} {rows.length === 1 ? 'holding' : 'holdings'} · {money(cost)} paid ·{' '}
+          {money(value)} estimated
         </span>
       </div>
 
       {rows.length === 0 ? (
-        <Empty>
-          No property recorded yet. Pull in the rental buildings from the portfolio, and add the
-          personal ones the returns name — 129 E Foster Ave in Roselle, and the Chicago condo at
-          1211 S Prairie, which the 2023 Schedule E reports as a residence rather than a rental.
-        </Empty>
+        <Empty>The trust schedule has no holdings on it.</Empty>
       ) : (
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Property</th><th>Address</th><th>Use</th>
-                <th className="num">Value</th><th className="num">Bought for</th>
-                <th>Bought</th><th className="num">Debt</th><th />
+                <th>Address</th><th>Property type</th><th>Use</th>
+                <th>Purchased</th><th className="num">Paid</th>
+                <th className="num">Estimated value</th><th className="num">Gain</th>
               </tr>
             </thead>
             <tbody>
-              {[...rows].sort((a, b) => (propertyValue(b.propertyId ?? '') ?? b.estimatedValue ?? 0)
-                - (propertyValue(a.propertyId ?? '') ?? a.estimatedValue ?? 0)).map((a) => {
-                const fromPortfolio = a.propertyId ? propertyValue(a.propertyId) : undefined
-                const value = fromPortfolio ?? a.estimatedValue
+              {[...rows].sort((a, b) => (b.estimatedValue ?? 0) - (a.estimatedValue ?? 0)).map((r) => {
+                const gain = r.purchasePrice && r.estimatedValue
+                  ? ((r.estimatedValue - r.purchasePrice) / r.purchasePrice) * 100
+                  : undefined
                 return (
-                  <tr key={a.id}>
-                    <td className="t-strong">{a.name || <span className="t-mute">Unnamed</span>}</td>
-                    <td className="t-mute" style={{ fontSize: 12 }}>{a.address || '—'}</td>
+                  <tr key={r.id} className="clickable" onClick={onTrust}>
+                    <td className="t-strong">{r.address}</td>
+                    <td className="t-mute" style={{ fontSize: 12, maxWidth: 230 }}>{r.propertyType}</td>
                     <td>
-                      <span className={`badge ${a.use === 'rental' ? 'ok' : 'mute'}`}>
-                        {a.use === 'rental' ? 'Rental' : 'Personal'}
+                      <span className={`badge ${r.use === 'rental' ? 'ok' : r.use === 'resale' ? 'warn' : 'mute'}`}>
+                        {USE_LABEL[r.use]}
                       </span>
                     </td>
+                    <td className="t-mono t-mute" style={{ fontSize: 12 }}>{dateLabel(r.purchaseDate)}</td>
+                    <td className="num t-mute">{r.purchasePrice ? money(r.purchasePrice) : '—'}</td>
+                    <td className="num t-strong">
+                      {r.estimatedValue === undefined
+                        ? <span className="t-mute">not valued</span>
+                        : `${money(r.estimatedValue)}${r.valueFromPortfolio ? '*' : ''}`}
+                    </td>
                     <td className="num">
-                      {value === undefined ? <span className="t-mute">—</span> : (
-                        <span title={fromPortfolio !== undefined ? 'Capitalised from the portfolio' : undefined}>
-                          {money(value)}{fromPortfolio !== undefined ? '*' : ''}
+                      {gain === undefined ? <span className="t-mute">—</span> : (
+                        <span className={gain < 0 ? 't-red' : 't-paid'}>
+                          {gain >= 0 ? '+' : ''}{gain.toFixed(0)}%
                         </span>
                       )}
-                    </td>
-                    <td className="num t-mute">{a.purchasePrice ? money(a.purchasePrice) : '—'}</td>
-                    <td className="t-mono t-mute" style={{ fontSize: 12 }}>{dateLabel(a.purchaseDate)}</td>
-                    <td className="num t-mute">{a.debt ? money(a.debt) : '—'}</td>
-                    <td>
-                      <button className="btn ghost sm" onClick={() => setEditing(a)}>Edit</button>
                     </td>
                   </tr>
                 )
               })}
             </tbody>
+            <tfoot>
+              <tr>
+                <td className="label" colSpan={4}>
+                  {num(rows.length)} {rows.length === 1 ? 'holding' : 'holdings'}
+                </td>
+                <td className="num">{money(cost)}</td>
+                <td className="num">{money(value)}</td>
+                <td />
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
-      {rows.some((r) => r.propertyId) && (
-        <p className="t-mute" style={{ fontSize: 12, marginTop: 8 }}>
-          * Value capitalised from that building's own net income at the cap rate set on the
-          Valuation screen. Change the cap rate there and these move with it.
-        </p>
-      )}
-
-      {editing && (
-        <RealEstateForm
-          asset={editing}
-          onSave={save}
-          onDelete={() => { onChange(rows.filter((r) => r.id !== editing.id)); setEditing(null) }}
-          onClose={() => setEditing(null)}
-        />
-      )}
+      <p className="t-mute" style={{ fontSize: 12, marginTop: 8 }}>
+        This is the trust's schedule of assets — the one list of what is owned. Add, correct or
+        value a holding on the <button className="link" onClick={onTrust}>Shirazi Trust</button>{' '}
+        screen and it shows here. A * value is capitalised from that building's net income at the{' '}
+        {capRate}% cap rate rather than typed; {num(rows.length - valued.length)} of{' '}
+        {num(rows.length)} still have no value at all.
+      </p>
     </>
-  )
-}
-
-function RealEstateForm({
-  asset, onSave, onDelete, onClose,
-}: {
-  asset: RealEstateAsset
-  onSave: (a: RealEstateAsset) => void
-  onDelete: () => void
-  onClose: () => void
-}) {
-  const [d, setD] = useState(asset)
-  const linked = Boolean(d.propertyId)
-  return (
-    <Modal title={asset.name ? `Edit ${asset.name}` : 'Add a property'} onClose={onClose}>
-      <div className="form-grid">
-        <Field label="Name"><input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} /></Field>
-        <Field label="Address">
-          <input value={d.address ?? ''} onChange={(e) => setD({ ...d, address: e.target.value })} />
-        </Field>
-        <Field label="Use">
-          <select value={d.use} onChange={(e) => setD({ ...d, use: e.target.value as RealEstateAsset['use'] })}>
-            <option value="rental">Rental — it earns rent</option>
-            <option value="personal">Personal — lived in or held</option>
-          </select>
-        </Field>
-        <Field label="Estimated value" hint={linked ? 'Taken from the portfolio for this building' : undefined}>
-          <input
-            inputMode="decimal" disabled={linked}
-            value={d.estimatedValue ?? ''}
-            onChange={(e) => setD({ ...d, estimatedValue: n(e.target.value) })}
-          />
-        </Field>
-        <Field label="Purchase price">
-          <input inputMode="decimal" value={d.purchasePrice ?? ''}
-            onChange={(e) => setD({ ...d, purchasePrice: n(e.target.value) })} />
-        </Field>
-        <Field label="Purchase date">
-          <input type="date" value={d.purchaseDate ?? ''}
-            onChange={(e) => setD({ ...d, purchaseDate: e.target.value || undefined })} />
-        </Field>
-        <Field label="Debt outstanding">
-          <input inputMode="decimal" value={d.debt ?? ''}
-            onChange={(e) => setD({ ...d, debt: n(e.target.value) })} />
-        </Field>
-      </div>
-      <Field label="Notes">
-        <textarea rows={2} value={d.notes ?? ''} onChange={(e) => setD({ ...d, notes: e.target.value })} />
-      </Field>
-      <FormActions onSave={() => onSave(d)} onDelete={onDelete} onClose={onClose} canSave={d.name.trim().length > 0} />
-    </Modal>
   )
 }
 

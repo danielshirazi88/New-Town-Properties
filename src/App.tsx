@@ -24,8 +24,10 @@ import { Receivables } from './views/Receivables'
 import { SlowPayers } from './views/SlowPayers'
 import { Assets } from './views/Assets'
 import { TaxReturns } from './views/TaxReturns'
-import { type AssetRegister } from './lib/assets'
-import { DEFAULT_REGISTER } from './data/personalProperty'
+import { EMPTY_REGISTER, type AssetRegister } from './lib/assets'
+import { Trust } from './views/Trust'
+import { EMPTY_TRUST_STATE, resolveTrust, type TrustState } from './lib/trust'
+import { TRUST_HOLDINGS } from './data/trust'
 import { TenantProfileView } from './views/TenantProfile'
 import type { TenantProfiles } from './lib/tenants'
 import { chargesForYear, payerRecordsFor, statusOf, trackedCharges,
@@ -37,7 +39,7 @@ import { FILED_RETURNS } from './data/taxReturns'
 type Tab =
   | 'dashboard' | 'properties' | 'rentroll' | 'expirations'
   | 'escalations' | 'expenses' | 'taxes' | 'valuation' | 'apollo' | 'integrity' | 'yoy' | 'sqft'
-  | 'accounting' | 'receivables' | 'slowpayers' | 'tenant' | 'assets' | 'returns'
+  | 'accounting' | 'receivables' | 'slowpayers' | 'tenant' | 'assets' | 'returns' | 'trust'
 
 export default function App() {
   const info = server()
@@ -56,7 +58,8 @@ export default function App() {
   const profileState = useStored<TenantProfiles>(STORE_KEYS.profiles, {})
   const paymentState = useStored<Payment[]>(STORE_KEYS.payments, [])
   const collectionState = useStored<CollectionSettings>(STORE_KEYS.collection, {})
-  const assetState = useStored<AssetRegister>(STORE_KEYS.assets, DEFAULT_REGISTER)
+  const assetState = useStored<AssetRegister>(STORE_KEYS.assets, EMPTY_REGISTER)
+  const trustState = useStored<TrustState>(STORE_KEYS.trust, EMPTY_TRUST_STATE)
 
   const overrides = overridesState.value
   const payments = paymentState.value
@@ -68,13 +71,23 @@ export default function App() {
   const k = useMemo(() => computeKpis(undefined, data), [data])
   const edits = editCount(overrides)
   const saving = overridesState.saving || expensesState.saving || taxState.saving
-    || profileState.saving || paymentState.saving || collectionState.saving || assetState.saving
+    || profileState.saving || paymentState.saving || collectionState.saving || assetState.saving || trustState.saving
   const saveError = overridesState.error ?? expensesState.error ?? taxState.error
-    ?? profileState.error ?? paymentState.error ?? collectionState.error ?? assetState.error
+    ?? profileState.error ?? paymentState.error ?? collectionState.error ?? assetState.error ?? trustState.error
 
   // Badge counts for the collection tabs: unpaid months, and tenants running
   // late. Both walk every charge, so they are computed once per data change
   // rather than on every render.
+  // The trust schedule is the register of what is owned; the asset screen reads
+  // real estate from it rather than keeping a second, divergent list.
+  const trustHoldings = useMemo(() => {
+    const value = new Map<string, number>()
+    for (const p of k.properties) {
+      if (p.netAfterTax > 0) value.set(p.property.id, (p.netAfterTax / DEFAULT_CAP_RATE) * 100)
+    }
+    return resolveTrust(TRUST_HOLDINGS, trustState.value, (id) => value.get(id))
+  }, [k, trustState.value])
+
   const { openCount, slowCount } = useMemo(() => {
     const charges = trackedCharges(
       chargesForYear(k.properties.flatMap((p) => p.leases), k.fiscalYear),
@@ -118,7 +131,7 @@ export default function App() {
     ? k.properties.flatMap((p) => p.leases).find((l) => l.id === selectedLease)
     : undefined
 
-  const assetCount = assetState.value.realEstate.length
+  const assetCount = trustHoldings.length
     + assetState.value.investments.length + assetState.value.vehicles.length
 
   const nav: { id: Tab; label: string; count?: string; group: string }[] = [
@@ -136,6 +149,7 @@ export default function App() {
     { id: 'expenses', label: 'Expenses', count: expenses.length ? String(expenses.length) : undefined, group: 'Money' },
     { id: 'taxes', label: 'Taxes — Schedule E', group: 'Money' },
     { id: 'returns', label: 'Tax returns', count: String(FILED_RETURNS.length), group: 'Money' },
+    { id: 'trust', label: 'Shirazi Trust', count: String(TRUST_HOLDINGS.length), group: 'Money' },
     { id: 'assets', label: 'Assets', count: assetCount ? String(assetCount) : undefined, group: 'Money' },
     { id: 'valuation', label: 'Valuation', group: 'Money' },
     { id: 'integrity', label: 'Data integrity', group: 'Money' },
@@ -252,12 +266,23 @@ export default function App() {
         {tab === 'yoy' && <YearOverYear overrides={overrides} onProperty={goProperty} />}
         {tab === 'sqft' && <SquareFootage k={k} onProperty={goProperty} />}
         {tab === 'returns' && <TaxReturns k={k} onProperty={goProperty} />}
+        {tab === 'trust' && (
+          <Trust
+            k={k}
+            state={trustState.value}
+            setState={trustState.setValue}
+            capRate={DEFAULT_CAP_RATE}
+            onProperty={goProperty}
+          />
+        )}
         {tab === 'assets' && (
           <Assets
             k={k}
             register={assetState.value}
             setRegister={assetState.setValue}
             capRate={DEFAULT_CAP_RATE}
+            trust={trustHoldings}
+            onTrust={() => setTab('trust')}
           />
         )}
         {tab === 'accounting' && (

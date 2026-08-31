@@ -202,4 +202,5 @@ export const STORE_KEYS = {
   payments: 'payments.v1',
   collection: 'collection.v1',
   assets: 'assets.v1',
+  trust: 'trust.v1',
 } as const
