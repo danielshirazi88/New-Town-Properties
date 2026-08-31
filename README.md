@@ -36,6 +36,8 @@ There is no server and no database.
 | **Accounts receivable** | What is outstanding, aged from the due date — by tenant, by property, by bucket |
 | **Slow payers & late fees** | Days to pay per tenant, fastest against slowest, and what the late fees come to — accrued and projected |
 | **Expenses** | Manual entry by property and category, with receipt/invoice upload |
+| **Tax returns** | Returns as filed — the 1040 and IL-1040 line by line, Schedule E per property, interest by bank, and what moved between years. Read-only: this is the archive, not the worksheet |
+| **Assets** | Everything owned, not just what pays rent — real estate split rental against personal, deposits with their bank, rate, interest dates and maturities, and vehicles with VIN, mileage, what was paid and what it is worth now. Charted by class |
 | **Valuation** | NOI and implied value across cap rates, on adjustable assumptions |
 | **Data integrity** | Reconciliation against the printed totals, and what the source documents don't contain |
 
@@ -157,6 +159,29 @@ Two things to know before reading the receivables figures:
 - **Set a tracking start month** on the Rent collection tab if you are starting from today
   rather than backfilling. Months before it fall out of scope — not receivable, not late, not
   counted — instead of reading as years of unpaid rent.
+
+---
+
+## The asset register
+
+The portfolio views cover the buildings that pay rent. The register covers
+everything else, in three kinds that are genuinely different and so carry
+different fields:
+
+- **Real estate** splits rental from personal. A rental building's value is read
+  from the portfolio at the cap rate set on the Valuation screen — the register
+  never stores a second, staler opinion of what the commercial estate is worth.
+  Personal property is entered by hand.
+- **Investments** record the institution, the type, the balance, the rate, how
+  often interest pays, the next interest date and the maturity. Deposits at or
+  near maturity are surfaced, because a matured CD usually sits in a low-rate
+  sweep until somebody moves it.
+- **Vehicles** record purchase price, where it was bought, VIN, current mileage
+  and current value.
+
+**A car with no current value entered counts as zero, not as its purchase
+price.** Guessing depreciation would put an invented number into a net-worth
+total, so unvalued rows are excluded and counted separately in plain sight.
 
 ---
 

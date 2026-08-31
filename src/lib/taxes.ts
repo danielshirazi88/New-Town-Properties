@@ -35,6 +35,11 @@ export const EXPENSE_LINE_KEYS = SCHEDULE_E_LINES
 
 export interface ScheduleELine {
   letter: string
+  /**
+   * The holding this line belongs to. A filed return can name a property the
+   * current portfolio no longer has, in which case the id is one only the return
+   * uses and no lookup will match it — views fall back to the printed address.
+   */
   propertyId: string
   address: string
   /** IRS line 1b: 1 = single family, 2 = multi-family, 4 = commercial, 7 = self-rental. */

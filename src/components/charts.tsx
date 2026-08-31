@@ -424,3 +424,97 @@ export function LadderChart({
     </div>
   )
 }
+
+/* ══ Composition — one ring, a handful of slices, labelled directly ═══════ */
+
+/**
+ * A breakdown of one total into its parts.
+ *
+ * Slices take the ordinal ramp in size order rather than a categorical palette,
+ * so the picture still reads as one hue and the ring is legible in greyscale.
+ * Colour is never the only cue: every slice is named and valued in the legend
+ * beside it, in the same order it is drawn.
+ */
+export function DonutChart({
+  slices,
+  size = 200,
+  thickness = 30,
+  centreLabel,
+  centreValue,
+  onSelect,
+}: {
+  slices: { id: string; label: string; value: number }[]
+  size?: number
+  thickness?: number
+  centreLabel?: string
+  centreValue?: string
+  onSelect?: (id: string) => void
+}) {
+  const [hover, setHover] = useState<string | null>(null)
+  const total = slices.reduce((a, s) => a + s.value, 0)
+  if (total <= 0) return null
+
+  const r = (size - thickness) / 2
+  const c = size / 2
+  const circumference = 2 * Math.PI * r
+
+  let offset = 0
+  const arcs = slices.map((s, i) => {
+    const share = s.value / total
+    const arc = { ...s, share, dash: share * circumference, offset, colour: RAMP[i % RAMP.length] }
+    offset += arc.dash
+    return arc
+  })
+
+  return (
+    <div className="donut-wrap">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img"
+        aria-label={`Breakdown: ${slices.map((s) => `${s.label} ${money(s.value)}`).join(', ')}`}>
+        <g transform={`rotate(-90 ${c} ${c})`}>
+          {arcs.map((a) => (
+            <circle
+              key={a.id}
+              cx={c} cy={c} r={r}
+              fill="none"
+              stroke={a.colour}
+              strokeWidth={hover === a.id ? thickness + 5 : thickness}
+              strokeDasharray={`${a.dash} ${circumference - a.dash}`}
+              strokeDashoffset={-a.offset}
+              style={{ cursor: onSelect ? 'pointer' : 'default', transition: 'stroke-width 120ms' }}
+              onMouseEnter={() => setHover(a.id)}
+              onMouseLeave={() => setHover(null)}
+              onClick={() => onSelect?.(a.id)}
+            />
+          ))}
+        </g>
+        {centreValue && (
+          <text x={c} y={c - 2} textAnchor="middle" fill="var(--ink)"
+            style={{ font: '600 17px var(--mono)' }}>{centreValue}</text>
+        )}
+        {centreLabel && (
+          <text x={c} y={c + 15} textAnchor="middle" fill="var(--ink-3)"
+            style={{ font: '500 10.5px var(--sans)', letterSpacing: '0.06em' }}>
+            {centreLabel.toUpperCase()}
+          </text>
+        )}
+      </svg>
+      <div className="donut-legend">
+        {arcs.map((a) => (
+          <button
+            key={a.id}
+            className={`donut-key${hover === a.id ? ' hot' : ''}`}
+            onMouseEnter={() => setHover(a.id)}
+            onMouseLeave={() => setHover(null)}
+            onClick={() => onSelect?.(a.id)}
+            style={{ cursor: onSelect ? 'pointer' : 'default' }}
+          >
+            <span className="donut-swatch" style={{ background: a.colour }} aria-hidden />
+            <span className="donut-name">{a.label}</span>
+            <span className="donut-val t-mono">{money(a.value)}</span>
+            <span className="donut-share t-mono">{(a.share * 100).toFixed(1)}%</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}

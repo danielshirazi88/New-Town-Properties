@@ -22,16 +22,21 @@ import { SquareFootage } from './views/SquareFootage'
 import { Accounting } from './views/Accounting'
 import { Receivables } from './views/Receivables'
 import { SlowPayers } from './views/SlowPayers'
+import { Assets } from './views/Assets'
+import { TaxReturns } from './views/TaxReturns'
+import { EMPTY_REGISTER, type AssetRegister } from './lib/assets'
 import { TenantProfileView } from './views/TenantProfile'
 import type { TenantProfiles } from './lib/tenants'
 import { chargesForYear, payerRecordsFor, statusOf, trackedCharges,
   type CollectionSettings, type Payment } from './lib/receivables'
 import { AVAILABLE_YEARS, CURRENT_YEAR, isPartYear, rentRoll, yearLabel } from './data/rentRolls'
+import { DEFAULT_CAP_RATE } from './lib/portfolio'
+import { FILED_RETURNS } from './data/taxReturns'
 
 type Tab =
   | 'dashboard' | 'properties' | 'rentroll' | 'expirations'
   | 'escalations' | 'expenses' | 'taxes' | 'valuation' | 'apollo' | 'integrity' | 'yoy' | 'sqft'
-  | 'accounting' | 'receivables' | 'slowpayers' | 'tenant'
+  | 'accounting' | 'receivables' | 'slowpayers' | 'tenant' | 'assets' | 'returns'
 
 export default function App() {
   const info = server()
@@ -50,6 +55,7 @@ export default function App() {
   const profileState = useStored<TenantProfiles>(STORE_KEYS.profiles, {})
   const paymentState = useStored<Payment[]>(STORE_KEYS.payments, [])
   const collectionState = useStored<CollectionSettings>(STORE_KEYS.collection, {})
+  const assetState = useStored<AssetRegister>(STORE_KEYS.assets, EMPTY_REGISTER)
 
   const overrides = overridesState.value
   const payments = paymentState.value
@@ -61,9 +67,9 @@ export default function App() {
   const k = useMemo(() => computeKpis(undefined, data), [data])
   const edits = editCount(overrides)
   const saving = overridesState.saving || expensesState.saving || taxState.saving
-    || profileState.saving || paymentState.saving || collectionState.saving
+    || profileState.saving || paymentState.saving || collectionState.saving || assetState.saving
   const saveError = overridesState.error ?? expensesState.error ?? taxState.error
-    ?? profileState.error ?? paymentState.error ?? collectionState.error
+    ?? profileState.error ?? paymentState.error ?? collectionState.error ?? assetState.error
 
   // Badge counts for the collection tabs: unpaid months, and tenants running
   // late. Both walk every charge, so they are computed once per data change
@@ -111,6 +117,9 @@ export default function App() {
     ? k.properties.flatMap((p) => p.leases).find((l) => l.id === selectedLease)
     : undefined
 
+  const assetCount = assetState.value.realEstate.length
+    + assetState.value.investments.length + assetState.value.vehicles.length
+
   const nav: { id: Tab; label: string; count?: string; group: string }[] = [
     { id: 'dashboard', label: 'Executive dashboard', group: 'Overview' },
     { id: 'yoy', label: 'Year over year', count: String(AVAILABLE_YEARS.length), group: 'Overview' },
@@ -125,11 +134,14 @@ export default function App() {
     { id: 'slowpayers', label: 'Slow payers & late fees', count: slowCount ? String(slowCount) : undefined, group: 'Money' },
     { id: 'expenses', label: 'Expenses', count: expenses.length ? String(expenses.length) : undefined, group: 'Money' },
     { id: 'taxes', label: 'Taxes — Schedule E', group: 'Money' },
+    { id: 'returns', label: 'Tax returns', count: String(FILED_RETURNS.length), group: 'Money' },
+    { id: 'assets', label: 'Assets', count: assetCount ? String(assetCount) : undefined, group: 'Money' },
     { id: 'valuation', label: 'Valuation', group: 'Money' },
     { id: 'integrity', label: 'Data integrity', group: 'Money' },
   ]
 
   const groups = [...new Set(nav.map((n) => n.group))]
+
 
   return (
     <div className="app">
@@ -238,6 +250,15 @@ export default function App() {
         {tab === 'integrity' && <DataIntegrity k={k} onProperty={goProperty} />}
         {tab === 'yoy' && <YearOverYear overrides={overrides} onProperty={goProperty} />}
         {tab === 'sqft' && <SquareFootage k={k} onProperty={goProperty} />}
+        {tab === 'returns' && <TaxReturns k={k} onProperty={goProperty} />}
+        {tab === 'assets' && (
+          <Assets
+            k={k}
+            register={assetState.value}
+            setRegister={assetState.setValue}
+            capRate={DEFAULT_CAP_RATE}
+          />
+        )}
         {tab === 'accounting' && (
           <Accounting
             k={k}

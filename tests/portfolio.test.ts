@@ -5,6 +5,7 @@ import { APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../src/data/apollo'
 import { collected, grossPotential, realisedEscalationPct, rentPerSqFt, valueAtCap, walt } from '../src/lib/finance'
 import { computeKpis, resolveData, valuationModel } from '../src/lib/portfolio'
 import { AVAILABLE_YEARS, CURRENT_YEAR, LATEST_YEAR, isPartYear, rentRoll, yearLabel } from '../src/data/rentRolls'
+import { RETURN_2023, RETURN_2024 } from '../src/data/taxReturns'
 
 /**
  * These lock the transcription to the printed workbook. If a lease line is ever
@@ -484,5 +485,67 @@ describe('rent per square foot outliers', () => {
     // is miscalibrated and the screen would be ignored.
     expect(outliers(2026).rows.length).toBeLessThanOrEqual(3)
     expect(outliers(2025).rows.length).toBeLessThanOrEqual(3)
+  })
+})
+
+describe('the filed 2023 return', () => {
+  const r = RETURN_2023
+  const sum = (k: keyof (typeof r.scheduleE)[number]) =>
+    r.scheduleE.reduce((a, l) => a + (l[k] as number), 0)
+
+  it('lists fifteen properties, lettered A to O', () => {
+    expect(r.scheduleE).toHaveLength(15)
+    expect(r.scheduleE.map((l) => l.letter).join('')).toBe('ABCDEFGHIJKLMNO')
+  })
+
+  it('reconciles rents less expenses to Schedule 1 line 5', () => {
+    // The return prints no Schedule E subtotals, so this end-to-end tie is the
+    // only check available — and it holds to the dollar.
+    const net = sum('rents') - sum('totalExpenses')
+    expect(net).toBe(690673)
+    expect(r.federal.find((l) => l.line === '8')!.amount).toBe(net)
+  })
+
+  it('carries the rental net into total income alongside the other sources', () => {
+    const f = (line: string) => r.federal.find((l) => l.line === line)!.amount
+    expect(f('1z') + f('2b') + f('3b') + f('7') + f('8')).toBe(f('9'))
+    expect(f('9')).toBe(938311)
+  })
+
+  it('arrives at taxable income after the standard and QBI deductions', () => {
+    const f = (line: string) => r.federal.find((l) => l.line === line)!.amount
+    expect(f('11') - f('12') - f('13')).toBe(f('15'))
+  })
+
+  it('owes the difference between the tax and what was paid in', () => {
+    const f = (line: string) => r.federal.find((l) => l.line === line)!.amount
+    expect(f('24') - f('33')).toBe(f('37'))
+  })
+
+  it('ties Schedule B to the interest line on the 1040', () => {
+    const interest = r.interestByPayer.reduce((a, x) => a + x.amount, 0)
+    expect(interest).toBe(214965)
+    expect(r.federal.find((l) => l.line === '2b')!.amount).toBe(interest)
+  })
+
+  it('reports 1211 S Prairie as a residence with nothing deducted', () => {
+    const k = r.scheduleE.find((l) => l.propertyId === 'prairie-1211')!
+    expect(k.personalUseDays).toBe(365)
+    expect(k.fairRentalDays).toBe(0)
+    expect(k.rents).toBe(0)
+    // Costs are listed on the return but line 20 is blank, so none was deducted.
+    expect(k.totalExpenses).toBe(0)
+    expect(k.taxes + k.insurance + k.depreciation).toBe(35959)
+  })
+
+  it('keeps the property that is on 2023 but not on 2024', () => {
+    const lake = r.scheduleE.find((l) => l.address.startsWith('3913 W LAKE'))!
+    expect(lake.rents).toBe(0)
+    expect(RETURN_2024.scheduleE.some((l) => l.address.startsWith('3913 W LAKE'))).toBe(false)
+  })
+
+  it('shows rents falling between 2023 and 2024 as filed', () => {
+    // Worth knowing before anyone reads the rent roll's growth as the whole story.
+    expect(RETURN_2024.scheduleETotals.rents).toBeLessThan(RETURN_2023.scheduleETotals.rents)
   })
 })
