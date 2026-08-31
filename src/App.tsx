@@ -14,6 +14,7 @@ import { money } from './lib/format'
 import { Taxes } from './views/Taxes'
 import { EMPTY_OVERRIDES, editCount, type Overrides } from './lib/overrides'
 import { useStored } from './lib/useStored'
+import { useToday } from './lib/useToday'
 import { STORE_KEYS, server, store } from './lib/store'
 import { SignIn } from './components/SignIn'
 import type { TaxEntries } from './lib/taxes'
@@ -51,6 +52,9 @@ export default function App() {
   // Where the tenant profile was opened from, so Back returns there.
   const [tenantFrom, setTenantFrom] = useState<Tab>('properties')
   const [year, setYear] = useState<number>(CURRENT_YEAR)
+  // Live, so a tab left open overnight rolls the rent over at midnight instead
+  // of waiting for someone to reload it.
+  const today = useToday()
 
   const overridesState = useStored<Overrides>(STORE_KEYS.overrides, EMPTY_OVERRIDES)
   const expensesState = useStored<Expense[]>(STORE_KEYS.expenses, [])
@@ -68,7 +72,7 @@ export default function App() {
 
   // Edits are layered over the source documents, then everything is recomputed.
   const data = useMemo(() => resolveData(overrides, year), [overrides, year])
-  const k = useMemo(() => computeKpis(undefined, data), [data])
+  const k = useMemo(() => computeKpis(today, data), [data, today])
   const edits = editCount(overrides)
   const saving = overridesState.saving || expensesState.saving || taxState.saving
     || profileState.saving || paymentState.saving || collectionState.saving || assetState.saving || trustState.saving

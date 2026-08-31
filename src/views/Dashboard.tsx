@@ -65,7 +65,7 @@ export function Dashboard({
         <h1 className="welcome">Welcome, <em>Mr. Shirazi</em></h1>
         <p className="page-sub">
           {k.propertyCount} properties · {num(k.unitCount)} commercial units · {k.apolloLots} mobile-home lots.
-          Figures are the 2025 rent roll; lease timing is measured from today,{' '}
+          Figures are the {k.fiscalYear} rent roll; lease timing is measured from today,{' '}
           {k.asOf.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.
           <br />
           <span className="t-mute">
@@ -77,7 +77,7 @@ export function Dashboard({
 
       {/* ── The headline numbers ─────────────────────────────────────────── */}
       <div className="kpi-grid">
-        <Kpi accent label="Gross income 2025" value={money(k.grossCollected)}
+        <Kpi accent label={`Gross income ${k.fiscalYear}`} value={money(k.grossCollected)}
           note={`${money(k.avgMonth + k.apolloGross / 12)} average month`} />
         <Kpi accent label="Net after property tax" value={money(k.netAfterTax)}
           note={`${pct(100 - k.taxLoadPct)} of gross retained`} />
@@ -88,7 +88,7 @@ export function Dashboard({
         <Kpi label="Net after tax & expenses" value={money(netOfExpenses)}
           note="Operating expenses only; capital spend excluded" />
         <Kpi label="Forward run rate" value={money(k.forwardRunRate)}
-          note={`December rent annualised · ${signedPct(k.runRateVsActualPct)} vs 2025`} />
+          note={`Exit rent annualised · ${signedPct(k.runRateVsActualPct)} vs ${k.fiscalYear}`} />
       </div>
 
       {/* ── Rent collection, this month ──────────────────────────────────── */}
@@ -197,7 +197,7 @@ export function Dashboard({
       <div className="section">
         <div className="section-title">Properties by income</div>
         <div className="grid-2">
-          <Card title="Gross income 2025">
+          <Card title={`Gross income ${k.fiscalYear}`}>
             <RankedBars
               onSelect={onProperty}
               items={ranked.map((p) => ({
@@ -304,7 +304,7 @@ export function Dashboard({
                 <th>Tenant</th>
                 <th>Property</th>
                 <th>Unit</th>
-                <th className="num">2025 rent</th>
+                <th className="num">{k.fiscalYear} rent</th>
                 <th className="num">Share</th>
                 <th>Lease ends</th>
               </tr>

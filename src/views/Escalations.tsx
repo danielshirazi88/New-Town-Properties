@@ -31,7 +31,7 @@ export function Escalations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
       <div className="page-head">
         <h1 className="page-title">Annual bumps</h1>
         <p className="page-sub">
-          What each lease is contracted to escalate, set against what the rent actually did during 2025.
+          What each lease is contracted to escalate, set against what the rent actually did during {k.fiscalYear}.
           Where the two disagree, a scheduled increase was not applied.
         </p>
       </div>
@@ -42,7 +42,7 @@ export function Escalations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
         <Kpi accent label="Average realised bump" value={pct(k.avgRealisedEscalationPct, 2)}
           note="What the rent actually rose" />
         <Kpi label="Bumps not taken" value={num(k.bumpsNotTaken.length)} warn
-          note={`${money(k.totalForgoneFromMissedBumps)} forgone in 2025`} />
+          note={`${money(k.totalForgoneFromMissedBumps)} forgone in ${k.fiscalYear}`} />
         <Kpi label="Next year's uplift" value={money(nextYearUplift)}
           note="If every stated escalation is applied to December's rate" />
         <Kpi label="Rent rise, Jan → Dec" value={signedPct(k.janToDecGrowthPct, 2)}
@@ -56,7 +56,7 @@ export function Escalations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
           <div className="callout">
             <div className="callout-title">Escalations that did not land</div>
             <p>
-              {k.bumpsNotTaken.length} leases are marked for an annual increase that the 2025 rent does not
+              {k.bumpsNotTaken.length} leases are marked for an annual increase that the {k.fiscalYear} rent does not
               show in full — together <strong>{money(k.totalForgoneFromMissedBumps)}</strong> of rent. Two of
               these are explained by the lease itself: Washland reset downward on a new March lease, and FC
               Salon Suites re-let below the prior rate after four vacant months. The rest are worth checking
@@ -130,7 +130,7 @@ export function Escalations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
                 <th>Tenant</th><th>Property</th><th>Unit</th>
                 <th className="num">Contracted</th><th className="num">Realised</th>
                 <th className="num">Jan rate</th><th className="num">Dec rate</th>
-                <th className="num">Monthly gain</th><th className="num">2025 rent</th>
+                <th className="num">Monthly gain</th><th className="num">{k.fiscalYear} rent</th>
               </tr>
             </thead>
             <tbody>

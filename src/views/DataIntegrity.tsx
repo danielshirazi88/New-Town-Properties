@@ -67,7 +67,8 @@ export function DataIntegrity({ k, onProperty }: { k: PortfolioKpis; onProperty:
       <div className="page-head">
         <h1 className="page-title">Data integrity</h1>
         <p className="page-sub">
-          Every figure in this application was transcribed from the 2025 rent roll and the Apollo registry.
+          Every figure in this application was transcribed from the {k.fiscalYear} rent roll and the Apollo
+          registry.
           This page shows where the transcription lands against the printed totals, and what the source
           documents do not contain.
         </p>
@@ -220,7 +221,7 @@ export function DataIntegrity({ k, onProperty }: { k: PortfolioKpis; onProperty:
               city. The property called "Florida" has no address at all and is left unconfirmed.
             </li>
             <li>
-              <strong>Apollo is shown as a flat monthly figure</strong> on the dashboard chart. The 2025
+              <strong>Apollo is shown as a flat monthly figure</strong> on the dashboard chart. The
               sheet gives only an annual total, so the twelve months are the annual figure divided evenly —
               it is not a measured seasonal pattern.
             </li>
@@ -230,9 +231,10 @@ export function DataIntegrity({ k, onProperty }: { k: PortfolioKpis; onProperty:
               lost rent is estimated; the sheets themselves record only a "V" or "FREE" marker.
             </li>
             <li>
-              <strong>Property taxes are the 2024 bills</strong> applied against 2025 income, as the sheets do —
+              <strong>Property taxes are the prior year's bills</strong> applied against {k.fiscalYear} income,
+              as the sheets do —
               normal for Illinois, where taxes are paid a year in arrears. Only the property called "Florida"
-              carries a 2025 bill.
+              carries a bill of its own year.
             </li>
           </ul>
         </Card>

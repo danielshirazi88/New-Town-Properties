@@ -152,6 +152,16 @@ fees are shown separately rather than dropped, so what was given up stays visibl
 the 1st is 0 days, paying on the 5th is 4 days and still on time. DTP and on-time rate answer
 different questions and are kept apart.
 
+**The app opens on the current year and month.** It is an operational tool, so
+the sheet on screen is the one the rent is being collected against — the current
+calendar year whenever a rent roll exists for it, falling back to the newest on
+file when the year turns before the new sheet arrives. A part year is labelled
+in the picker and carries a banner, rather than being avoided by opening on a
+year that is finished but no longer current.
+
+The date is live, not captured at load: a tab left open overnight rolls the rent
+over at midnight on its own, so the morning of the 1st shows the 1st.
+
 **The ledger starts clean.** On 31 August 2026 the owner confirmed every tenant
 was current, so everything billed through August 2026 is settled by declaration
 rather than by six hundred retro-entered payments. Those months read green with

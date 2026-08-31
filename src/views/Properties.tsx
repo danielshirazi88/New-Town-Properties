@@ -56,7 +56,7 @@ export function Properties({
               <th>Location</th>
               <th className="num">Units</th>
               <th className="num">Occupancy</th>
-              <th className="num">Gross 2025</th>
+              <th className="num">Gross {k.fiscalYear}</th>
               <th className="num">Taxes</th>
               <th className="num">Net after tax</th>
               <th className="num">Tax load</th>
@@ -110,7 +110,7 @@ export function Properties({
 
       <div className="section">
         <div className="grid-2">
-          <Card title="Gross income" hint="2025">
+          <Card title="Gross income" hint={String(k.fiscalYear)}>
             <RankedBars onSelect={onSelect} items={ranked.map((m) => ({ id: m.property.id, label: m.property.name, value: m.collected }))} />
           </Card>
           <Card title="Tax load" hint="taxes as a share of gross">
@@ -202,7 +202,7 @@ function PropertyDetail({
       </div>
 
       <div className="kpi-grid">
-        <Kpi accent label="Gross income 2025" value={money(m.collected)} note={`${pct(m.portfolioSharePct)} of the portfolio`} />
+        <Kpi accent label={`Gross income ${k.fiscalYear}`} value={money(m.collected)} note={`${pct(m.portfolioSharePct)} of the portfolio`} />
         <Kpi label={`Property tax (${m.property.taxBillYear})`} value={money(m.taxBill)} note={`${pct(m.taxLoadPct)} of gross`} warn />
         <Kpi accent label="Net after tax" value={money(m.netAfterTax)} />
         <Kpi label="Logged expenses" value={money(roll.total)}
@@ -282,7 +282,7 @@ function PropertyDetail({
                   {APOLLO_TENANTS.filter((t) => t.isParking).length} tandem parking spaces at{' '}
                   {money(APOLLO_PARKING_RENT)} a month. Lots come from the {APOLLO_REGISTRY_LABEL}; the
                   parking count and rate come from the owner. Everything here is month to month, so there
-                  are no lease end dates or annual bumps to show. The 2025 sheet gives Apollo only as an annual total, which is why
+                  are no lease end dates or annual bumps to show. The sheet gives Apollo only as an annual total, which is why
                   the month-by-month tab shows it spread evenly rather than measured.
                 </p>
                 <ApolloRoll tenants={[...APOLLO_TENANTS].sort((a, b) => a.name.localeCompare(b.name))} />

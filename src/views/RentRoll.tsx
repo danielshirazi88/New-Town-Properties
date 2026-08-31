@@ -136,7 +136,7 @@ export function RentRoll({
             className="btn"
             onClick={() => download(
               `ntp-rent-roll-${new Date().toISOString().slice(0, 10)}.csv`,
-              buildCsv(segment, rows, apolloRows, propName),
+              buildCsv(segment, rows, apolloRows, propName, k.fiscalYear),
             )}
           >
             Export CSV
@@ -327,11 +327,12 @@ function buildCsv(
   commercial: Lease[],
   apollo: ApolloTenant[],
   propName: (id: string) => string,
+  year: number,
 ): string {
   if (segment === 'apollo') return `Apollo Mobile Home Court — ${APOLLO_REGISTRY_LABEL}\n${apolloCsv(apollo)}`
-  if (segment === 'commercial') return `Commercial suites — 2025\n${toCsv(commercial, propName)}`
+  if (segment === 'commercial') return `Commercial suites — ${year}\n${toCsv(commercial, propName)}`
   return [
-    `Commercial suites — 2025`,
+    `Commercial suites — ${year}`,
     toCsv(commercial, propName),
     '',
     `Apollo Mobile Home Court — ${APOLLO_REGISTRY_LABEL}`,
@@ -344,7 +345,7 @@ function toCsv(leases: Lease[], propName: (id: string) => string): string {
   const header = [
     'Property', 'Unit', 'Tenant', 'Lease type', 'Lease start', 'Lease end',
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    '2025 total', 'Stated bump %', 'Realised bump %', 'Contacts',
+    'Year total', 'Stated bump %', 'Realised bump %', 'Contacts',
   ]
   const rows = leases.map((l) => [
     propName(l.propertyId), l.unit, l.tenant,

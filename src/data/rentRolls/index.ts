@@ -75,15 +75,21 @@ export const AVAILABLE_YEARS: number[] = Object.keys(RENT_ROLLS).map(Number).sor
 export const LATEST_YEAR: number = AVAILABLE_YEARS[AVAILABLE_YEARS.length - 1]
 
 /**
- * The year the app opens on: the most recent *complete* one.
+ * The year the application opens on.
  *
- * A part-year sheet makes a poor default. Opening on eight months of 2026 would
- * show income of $1.65M against 2025's $2.93M and read as a collapse, when the
- * only thing that happened is that the year is not over. The current year is one
- * click away in the picker and labelled as partial wherever it is shown.
+ * The current calendar year, whenever a rent roll exists for it — this is an
+ * operational tool now, and the month being collected has to be the one on
+ * screen. It falls back to the newest roll on file when the year turns over
+ * before the new sheet arrives.
+ *
+ * A part year is a poor thing to compare against a full one: eight months of
+ * 2026 is $1.65M against 2025's $2.93M, which reads as a collapse when the only
+ * thing that happened is that the year is not over. That is handled by saying so
+ * — every part year is labelled in the picker and carries a banner on the page —
+ * rather than by opening on a year that is finished but no longer current.
  */
 export const CURRENT_YEAR: number =
-  [...AVAILABLE_YEARS].reverse().find((y) => RENT_ROLLS[y].monthsReported === 12) ?? LATEST_YEAR
+  RENT_ROLLS[new Date().getFullYear()] ? new Date().getFullYear() : LATEST_YEAR
 
 /** How a year is described in the picker and in headings. */
 export function yearLabel(year: number): string {

@@ -383,16 +383,28 @@ describe('2026 rent roll', () => {
 
 
 describe('the default year', () => {
-  it('opens on the most recent complete year, not a part year', () => {
-    expect(CURRENT_YEAR).toBe(2025)
+  it('opens on the current calendar year, so the month being collected is on screen', () => {
+    const thisYear = new Date().getFullYear()
+    expect(CURRENT_YEAR).toBe(AVAILABLE_YEARS.includes(thisYear) ? thisYear : LATEST_YEAR)
+  })
+
+  it('opens on a part year rather than a stale complete one', () => {
+    // Deliberate: this is an operational tool, and rent is collected in the
+    // current month. The part-year figures are labelled instead of avoided.
+    expect(CURRENT_YEAR).toBe(2026)
+    expect(isPartYear(CURRENT_YEAR)).toBe(true)
+  })
+
+  it('falls back to the newest sheet when the year turns before one arrives', () => {
+    // There is no 2027 roll yet, so 2027 is not a candidate.
+    expect(AVAILABLE_YEARS).not.toContain(2027)
     expect(LATEST_YEAR).toBe(2026)
-    expect(isPartYear(CURRENT_YEAR)).toBe(false)
-    expect(isPartYear(LATEST_YEAR)).toBe(true)
   })
 
   it('labels a part year so it cannot be read as a full one', () => {
     expect(yearLabel(2025)).toBe('2025')
     expect(yearLabel(2026)).toContain('through August')
+    expect(isPartYear(2025)).toBe(false)
   })
 })
 

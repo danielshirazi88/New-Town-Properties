@@ -33,12 +33,13 @@ export function Apollo({ k, tenants: APOLLO }: { k: PortfolioKpis; tenants: Apol
         <h1 className="page-title">Apollo Mobile Home Court</h1>
         <p className="page-sub">
           The trailer park. {k.apolloLots} lots plus {k.apolloParkingSpaces} tandem parking spaces, all
-          month-to-month. Roster below is the {APOLLO_REGISTRY_LABEL}; the income figures are 2025.
+          month-to-month. Roster below is the {APOLLO_REGISTRY_LABEL}; the income figures are for{' '}
+          {k.fiscalYear}.
         </p>
       </div>
 
       <div className="kpi-grid">
-        <Kpi accent label="2025 gross income" value={money(k.apolloGross)} note={`${money(k.apolloGross / 12)} per month average`} />
+        <Kpi accent label={`${k.fiscalYear} gross income`} value={money(k.apolloGross)} note={`${money(k.apolloGross / 12)} per month average`} />
         <Kpi label="2024 property tax" value={money(k.apolloTaxes)} note={`${pct((k.apolloTaxes / k.apolloGross) * 100)} of gross`} warn />
         <Kpi accent label="Net after tax" value={money(k.apolloNet)} />
         <Kpi label="Lots billed" value={num(k.apolloLots)} note={`plus ${k.apolloParkingSpaces} tandem parking spaces`} />
@@ -87,11 +88,11 @@ export function Apollo({ k, tenants: APOLLO }: { k: PortfolioKpis; tenants: Apol
                 <p className="page-sub" style={{ margin: 0 }}>{APOLLO_PARKING_NOTE}</p>
               </div>
               <div>
-                <div className="t-strong" style={{ marginBottom: 3 }}>Roster against 2025</div>
+                <div className="t-strong" style={{ marginBottom: 3 }}>Roster against {k.fiscalYear}</div>
                 <p className="page-sub" style={{ margin: 0 }}>
                   Today's roster bills {money(k.apolloMonthlyBilled)} a month — {money(k.apolloAnnualisedCurrent)} a
-                  year, against {money(k.apolloGross)} collected in 2025. Most of that gap is a year of rent
-                  increases; part of it may be the parking, which the 2025 sheet may never have counted.
+                  year, against {money(k.apolloGross)} collected in {k.fiscalYear}. Most of that gap is a year of rent
+                  increases; part of it may be the parking, which the sheet may never have counted.
                 </p>
               </div>
             </div>

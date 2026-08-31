@@ -117,7 +117,7 @@ export function Expirations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
                   <th>Unit</th>
                   <th>Commenced</th>
                   <th>Expires</th>
-                  <th className="num">2025 rent</th>
+                  <th className="num">{k.fiscalYear} rent</th>
                   <th className="num">Monthly (Dec)</th>
                 </tr>
               </thead>
