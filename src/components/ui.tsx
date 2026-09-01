@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react'
-import { concessionSummary, monthsRemaining, type PropertyMetrics } from '../lib/finance'
+import {
+  concessionSummary, isConveyed, isMonthToMonth, monthsRemaining, payingLately,
+  type PropertyMetrics,
+} from '../lib/finance'
 import type { Lease } from '../lib/types'
 
 export function Kpi({
@@ -43,7 +46,9 @@ export function Card({ title, hint, children, actions }: {
 
 /* ── Lease expiry status ─────────────────────────────────────────────────── */
 
-export type ExpiryStatus = 'expired' | 'critical' | 'soon' | 'watch' | 'safe' | 'none'
+export type ExpiryStatus =
+  | 'expired' | 'vacated' | 'rolling' | 'conveyed'
+  | 'critical' | 'soon' | 'watch' | 'safe' | 'none'
 
 export interface ExpiryInfo {
   status: ExpiryStatus
@@ -57,11 +62,29 @@ export interface ExpiryInfo {
  * works a renewal: six months out you start the conversation, three months out
  * it is pressing, and past the end date the tenant is on holdover with no
  * contractual protection on either side.
+ *
+ * Three things sit past an end date without being a lapse, and lumping them in
+ * with one is how a list of urgent problems fills up with things nobody needs to
+ * act on:
+ *
+ *  - **A lease at a building that has been sold.** It went with the building.
+ *  - **A month-to-month tenancy.** The date beside it is the last fixed term,
+ *    not a lapse; the arrangement is working as agreed.
+ *  - **A unit the tenant has already left.** That is a vacancy to re-let, not a
+ *    holdover to negotiate, and it belongs on a different list.
  */
 export function expiryInfo(lease: Lease, asOf?: Date): ExpiryInfo {
   const m = monthsRemaining(lease, asOf)
+  if (isConveyed(lease)) {
+    return { status: 'conveyed', months: m, label: 'Sold with the building', tone: 'mute' }
+  }
+  if (isMonthToMonth(lease)) return { status: 'rolling', label: 'Month to month', tone: 'mute' }
   if (m === undefined) return { status: 'none', label: 'No end date on file', tone: 'warn' }
-  if (m < 0) return { status: 'expired', months: m, label: `Lapsed ${Math.abs(m)} mo ago`, tone: 'critical' }
+  if (m < 0) {
+    return payingLately(lease)
+      ? { status: 'expired', months: m, label: `Holdover — lapsed ${Math.abs(m)} mo ago`, tone: 'critical' }
+      : { status: 'vacated', months: m, label: `Ended ${Math.abs(m)} mo ago — vacant`, tone: 'warn' }
+  }
   if (m <= 3) return { status: 'critical', months: m, label: m === 0 ? 'Ends this month' : `${m} mo left`, tone: 'critical' }
   if (m <= 6) return { status: 'soon', months: m, label: `${m} mo left`, tone: 'warn' }
   if (m <= 12) return { status: 'watch', months: m, label: `${m} mo left`, tone: 'warn' }
@@ -69,7 +92,8 @@ export function expiryInfo(lease: Lease, asOf?: Date): ExpiryInfo {
 }
 
 const DOT_CLASS: Record<ExpiryStatus, string> = {
-  expired: 'expired', critical: 'soon', soon: 'soon', watch: 'watch', safe: 'safe', none: 'none',
+  expired: 'expired', vacated: 'watch', rolling: 'none', conveyed: 'none',
+  critical: 'soon', soon: 'soon', watch: 'watch', safe: 'safe', none: 'none',
 }
 
 export function ExpiryBadge({ lease, asOf }: { lease: Lease; asOf?: Date }) {

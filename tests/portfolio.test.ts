@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { LEASES } from '../src/data/leases'
 import { PROPERTIES } from '../src/data/properties'
 import { APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../src/data/apollo'
-import { cellAmount, collected, concessionLoss, concessionSummary, firstRate, grossPotential, isDark, lastRate, realisedEscalationPct, rentPerSqFt, vacancyLoss, valueAtCap, walt } from '../src/lib/finance'
+import { cellAmount, collected, concessionLoss, concessionSummary, firstRate, grossPotential, hasVacated, isConveyed, isDark, isExpired, isHoldover, isMonthToMonth, lastRate, payingLately, realisedEscalationPct, rentPerSqFt, vacancyLoss, valueAtCap, walt } from '../src/lib/finance'
 import { computeKpis, resolveData, valuationModel } from '../src/lib/portfolio'
 import { AVAILABLE_YEARS, CURRENT_YEAR, LATEST_YEAR, isPartYear, rentRoll, unitKey, yearLabel } from '../src/data/rentRolls'
 import { RETURN_2023, RETURN_2024 } from '../src/data/taxReturns'
@@ -840,5 +840,85 @@ describe('appraisals against a part year', () => {
     const earning = computeKpis(undefined, resolveData(undefined, 2026)).properties.filter((p) => p.collected > 0)
     const without = earning.filter((p) => !m.has(p.property.id)).map((p) => p.property.id)
     expect(without).toEqual(['west-plaza'])
+  })
+})
+
+/**
+ * Which leases are actually a problem, checked against the 2026 sheet scanned on
+ * 27 August 2026.
+ *
+ * The screen used to report six lapsed leases. Three were at West Plaza, which
+ * the sheet itself heads "SOLD 04/30/2026" — their end dates are the sale date,
+ * because they went with the building. One was a month-to-month tenancy whose
+ * printed date is the last fixed term. One was a unit the tenant had already
+ * left. Exactly one was a real holdover.
+ */
+describe('what counts as an expired lease', () => {
+  const asOf = new Date('2026-09-01T12:00:00')
+  const k = computeKpis(asOf, resolveData(undefined, 2026))
+  const at = (propertyId: string, unit: string) =>
+    k.properties.flatMap((p) => p.leases).find((l) => l.propertyId === propertyId && l.unit === unit)!
+
+  it('leaves a sold building’s leases out of the landlord’s problems', () => {
+    // West Plaza sold on 30 April 2026, which is the day three of its leases
+    // "end". Renewing them is the buyer's decision.
+    for (const unit of ['1905', '1913', '1925']) {
+      const l = at('west-plaza', unit)
+      expect(l.conveyedOn, unit).toBe('2026-04-30')
+      expect(isConveyed(l), unit).toBe(true)
+      expect(isExpired(l, asOf), unit).toBe(false)
+    }
+    expect(k.expiredLeases.some((l) => l.propertyId === 'west-plaza')).toBe(false)
+    expect(k.expiring12.some((l) => l.propertyId === 'west-plaza')).toBe(false)
+    expect(k.expirationLadder.length).toBeGreaterThan(0)
+  })
+
+  it('does not read a month-to-month tenancy as lapsed', () => {
+    // 1681's options column reads "0- M to M"; the date beside it is the last
+    // fixed term, not a lapse.
+    const nw = at('plaza-2', '1681')
+    expect(isMonthToMonth(nw)).toBe(true)
+    expect(nw.leaseEnd).toBe('2026-05-31')
+    expect(isExpired(nw, asOf)).toBe(false)
+    expect(k.monthToMonthLeases.map((l) => l.unit)).toContain('1681')
+  })
+
+  it('tells a unit the tenant left from one they are still sitting in', () => {
+    // 1643 N 43rd billed to April and reads V from May. In September it is an
+    // empty unit, not a tenant on holdover.
+    const gone = at('n-43rd-1643', '1643 N 43rd')
+    expect(collected(gone)).toBeGreaterThan(0)
+    expect(payingLately(gone)).toBe(false)
+    expect(hasVacated(gone, asOf)).toBe(true)
+    expect(isHoldover(gone, asOf)).toBe(false)
+
+    const staying = at('plaza-1', '1F')
+    expect(payingLately(staying)).toBe(true)
+    expect(isHoldover(staying, asOf)).toBe(true)
+    expect(hasVacated(staying, asOf)).toBe(false)
+  })
+
+  it('is left with exactly one real holdover', () => {
+    // Purpura Beauty Spa, lapsed 31 May 2026 and still paying every month.
+    expect(k.holdoverLeases).toHaveLength(1)
+    expect(k.holdoverLeases[0].unit).toBe('1F')
+    expect(k.holdoverLeases[0].leaseEnd).toBe('2026-05-31')
+    expect(k.vacatedLeases.map((l) => l.unit)).toEqual(['1643 N 43rd'])
+  })
+
+  it('keeps a sold building’s income while dropping its lease risk', () => {
+    // The building earned through April and that rent is real; only the
+    // renewals stop being this landlord's.
+    const wp = k.properties.find((p) => p.property.id === 'west-plaza')!
+    expect(wp.collected).toBeGreaterThan(0)
+    expect(k.grossCollected).toBeGreaterThan(wp.collected)
+  })
+
+  it('reads month-to-month however the sheet writes it', () => {
+    const like = (s: string) => isMonthToMonth({ renewalOptions: s } as never)
+    for (const s of ['M to M', 'M TO M', '0- M to M', 'Month to month', 'month-to-month']) {
+      expect(like(s), s).toBe(true)
+    }
+    for (const s of ['', '5YR + 5YR', '3YR', '2YR+2YR+2YR']) expect(like(s), s).toBe(false)
   })
 })

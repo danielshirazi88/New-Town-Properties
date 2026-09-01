@@ -75,6 +75,16 @@ export interface Lease {
   /** Renewal options as written, e.g. "5YR + 5YR" or "M to M". */
   renewalOptions?: string
   /**
+   * The date the building was sold, where it has been.
+   *
+   * Set from the property when the year's data is resolved, not typed on the
+   * lease. A lease at a building that has been sold did not expire — it went
+   * with the building, and it is the buyer's to renew or not. Treating its end
+   * date as a lapse would put someone else's tenants on this landlord's list of
+   * problems.
+   */
+  conveyedOn?: string
+  /**
    * What the money is. Almost everything is rent; the exceptions matter because
    * they should not be divided by square footage or counted as occupancy.
    */

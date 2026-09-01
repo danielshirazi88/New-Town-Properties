@@ -21,6 +21,10 @@ export function Dashboard({
   onProperty: (id: string) => void
   onNav: (tab: string) => void
 }) {
+  // Rent still arriving from tenants whose lease end date has passed — the
+  // figure that says how much income is running without a contract behind it.
+  const holdoverRent = k.holdoverLeases.reduce((a, l) => a + collected(l), 0)
+
   const heatRows = [...k.properties]
     .sort((a, b) => b.collected - a.collected)
     .map((p) => ({ id: p.property.id, name: p.property.name, values: p.monthly, total: p.collected }))
@@ -149,8 +153,14 @@ export function Dashboard({
       <div className="section">
         <div className="section-title">Needs attention</div>
         <div className="kpi-grid">
-          <Kpi accent label="Leases already lapsed" value={num(k.expiredLeases.length)}
-            note={`${money(k.rentOnExpiredLeases)} of rent on holdover`} warn />
+          <Kpi accent label="Tenants on holdover" value={num(k.holdoverLeases.length)}
+            note={k.holdoverLeases.length > 0
+              ? `${money(holdoverRent)} of rent past a lease end date`
+              : 'Every paying tenant is inside its term'}
+            warn={k.holdoverLeases.length > 0} />
+          <Kpi label="Lapsed and vacant" value={num(k.vacatedLeases.length)}
+            note={k.vacatedLeases.length > 0 ? 'Units to re-let' : 'None'}
+            warn={k.vacatedLeases.length > 0} />
           <Kpi label="Expiring within 12 months" value={num(k.expiring12.length)}
             note={`${money(k.rentAtRisk12)} at risk`} warn />
           <Kpi label="Escalations not taken" value={num(k.bumpsNotTaken.length)}

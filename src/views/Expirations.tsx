@@ -6,16 +6,21 @@ import { dateLabel, money, num, pct } from '../lib/format'
 import type { PortfolioKpis } from '../lib/portfolio'
 import type { Lease } from '../lib/types'
 
-type Filter = 'all' | 'expired' | 'critical' | 'soon' | 'watch' | 'safe' | 'none'
+type Filter =
+  | 'all' | 'expired' | 'vacated' | 'rolling' | 'critical' | 'soon' | 'watch' | 'safe'
+  | 'none' | 'conveyed'
 
 const FILTERS: { id: Filter; label: string; match: (s: ExpiryStatus) => boolean }[] = [
   { id: 'all', label: 'All leases', match: () => true },
-  { id: 'expired', label: 'Already lapsed', match: (s) => s === 'expired' },
+  { id: 'expired', label: 'On holdover', match: (s) => s === 'expired' },
+  { id: 'vacated', label: 'Lapsed and vacant', match: (s) => s === 'vacated' },
   { id: 'critical', label: 'Under 3 months', match: (s) => s === 'critical' },
   { id: 'soon', label: '3–6 months', match: (s) => s === 'soon' },
   { id: 'watch', label: '6–12 months', match: (s) => s === 'watch' },
   { id: 'safe', label: 'Over a year', match: (s) => s === 'safe' },
+  { id: 'rolling', label: 'Month to month', match: (s) => s === 'rolling' },
   { id: 'none', label: 'No end date', match: (s) => s === 'none' },
+  { id: 'conveyed', label: 'Sold with a building', match: (s) => s === 'conveyed' },
 ]
 
 export function Expirations({ k, onProperty }: { k: PortfolioKpis; onProperty: (id: string) => void }) {
@@ -23,6 +28,7 @@ export function Expirations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
   const [query, setQuery] = useState('')
 
   const propName = (id: string) => k.properties.find((p) => p.property.id === id)?.property.name ?? id
+  const holdoverRent = k.holdoverLeases.reduce((a, l) => a + collected(l), 0)
 
   const rows = useMemo(() => {
     const all = k.properties.flatMap((p) => p.leases)
@@ -71,8 +77,16 @@ export function Expirations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
       </div>
 
       <div className="kpi-grid">
-        <Kpi accent label="Already lapsed" value={num(k.expiredLeases.length)}
-          note={`${money(k.rentOnExpiredLeases)} of rent, ${pct((k.rentOnExpiredLeases / k.grossCollected) * 100)} of income`} warn />
+        <Kpi accent label="On holdover" value={num(k.holdoverLeases.length)}
+          note={k.holdoverLeases.length > 0
+            ? `${money(holdoverRent)} of rent, ${pct((holdoverRent / k.grossCollected) * 100)} of income`
+            : 'Nobody is paying past a lease end date'}
+          warn={k.holdoverLeases.length > 0} />
+        <Kpi label="Lapsed and vacant" value={num(k.vacatedLeases.length)}
+          note={k.vacatedLeases.length > 0 ? 'Units to re-let' : 'None'}
+          warn={k.vacatedLeases.length > 0} />
+        <Kpi label="Month to month" value={num(k.monthToMonthLeases.length)}
+          note="Rolling by agreement, not lapsed" />
         <Kpi label="Next 3 months" value={num(counts.critical)} note={money(rentIn(0, 3))} warn />
         <Kpi label="3 – 6 months" value={num(counts.soon)} note={money(rentIn(4, 6))} warn />
         <Kpi label="6 – 12 months" value={num(counts.watch)} note={money(rentIn(7, 12))} />

@@ -9,6 +9,7 @@ import type { ApolloTenant, Property } from './types'
 import {
   AS_OF, collected, concessionLoss, darkMonths, exitRate, grossPotential, hasNoEndDate,
   herfindahl, isExpired, isFullyVacant, isHoldover, monthlySeries, monthsRemaining,
+  isConveyed, isMonthToMonth, hasVacated,
   propertyMetrics, realisedEscalationPct, vacancyLoss, valueAtCap, walt, waltActiveOnly,
   type PropertyMetrics,
 } from './finance'
@@ -77,6 +78,10 @@ export interface PortfolioKpis {
   waltActiveOnly: number
   expiredLeases: Lease[]
   holdoverLeases: Lease[]
+  /** Past its end date and empty — a unit to re-let, not a tenant to negotiate. */
+  vacatedLeases: Lease[]
+  /** Tenancies that renew by the month rather than running to a date. */
+  monthToMonthLeases: Lease[]
   rentOnExpiredLeases: number
   expiring12: Lease[]
   expiring24: Lease[]
@@ -185,16 +190,25 @@ export function resolveData(
       }
     })
 
+  // Leases at a building that has been sold are marked as having gone with it.
+  // Their end dates are still on the sheet and still in the past, but renewing
+  // them is the buyer's decision, not this landlord's.
+  const soldOn = new Map(
+    PROPERTIES.filter((p) => p.soldDate).map((p) => [p.id, p.soldDate!]),
+  )
+
   // A unit's area is a fact about the building, so an area stated on any sheet
   // is carried onto the same unit in every year — tagged with where it came from.
   const withArea = roll.leases.map((l) => {
     const area = l.squareFeet ? undefined : areaForUnit(l.propertyId, l.unit)
     const kind = l.incomeType ? undefined : incomeTypeForUnit(l.propertyId, l.unit)
-    if (!area && !kind) return l
+    const conveyedOn = soldOn.get(l.propertyId)
+    if (!area && !kind && !conveyedOn) return l
     return {
       ...l,
       ...(area && { squareFeet: area.squareFeet, squareFeetFromYear: area.sourceYear }),
       ...(kind && { incomeType: kind }),
+      ...(conveyedOn && { conveyedOn }),
     }
   })
 
@@ -242,19 +256,26 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
   const exitMonthlyRent = commercialLeases.reduce((a, l) => a + exitRate(l), 0)
   const forwardRunRate = exitMonthlyRent * 12 + apolloPerMonth * 12
 
+  // Everything about expiry is measured on the leases this landlord still holds.
+  // A building that has been sold takes its leases with it, and counting them
+  // here would put someone else's renewals on this portfolio's risk.
+  const ownLeases = commercialLeases.filter((l) => !isConveyed(l))
+
   const withinMonths = (l: Lease, lo: number, hi: number) => {
     const m = monthsRemaining(l, asOf)
     return m !== undefined && m >= lo && m <= hi
   }
-  const expiring12 = commercialLeases.filter((l) => withinMonths(l, 0, 12))
-  const expiring24 = commercialLeases.filter((l) => withinMonths(l, 0, 24))
-  const expiring36 = commercialLeases.filter((l) => withinMonths(l, 0, 36))
-  const expiredLeases = commercialLeases.filter((l) => isExpired(l, asOf))
-  const holdoverLeases = commercialLeases.filter((l) => isHoldover(l, asOf))
+  const expiring12 = ownLeases.filter((l) => withinMonths(l, 0, 12))
+  const expiring24 = ownLeases.filter((l) => withinMonths(l, 0, 24))
+  const expiring36 = ownLeases.filter((l) => withinMonths(l, 0, 36))
+  const expiredLeases = ownLeases.filter((l) => isExpired(l, asOf))
+  const holdoverLeases = ownLeases.filter((l) => isHoldover(l, asOf))
+  const vacatedLeases = ownLeases.filter((l) => hasVacated(l, asOf))
+  const monthToMonthLeases = ownLeases.filter((l) => isMonthToMonth(l))
 
   // Expiration ladder, bucketed by calendar year of expiry.
   const ladderMap = new Map<number, { count: number; rent: number }>()
-  for (const l of commercialLeases) {
+  for (const l of ownLeases) {
     if (!l.leaseEnd) continue
     const y = new Date(l.leaseEnd + 'T00:00:00').getFullYear()
     const cur = ladderMap.get(y) ?? { count: 0, rent: 0 }
@@ -359,6 +380,8 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
     waltActiveOnly: waltActiveOnly(commercialLeases, asOf),
     expiredLeases,
     holdoverLeases,
+    vacatedLeases,
+    monthToMonthLeases,
     rentOnExpiredLeases: expiredLeases.reduce((a, l) => a + collected(l), 0),
     expiring12,
     expiring24,

@@ -162,14 +162,74 @@ export function monthsRemaining(l: Lease, asOf: Date = AS_OF): number | undefine
   return (end.getFullYear() - asOf.getFullYear()) * 12 + (end.getMonth() - asOf.getMonth())
 }
 
+/**
+ * A lease that left with the building.
+ *
+ * Its end date is still on the sheet and still in the past, but it is not this
+ * landlord's lease any more — renewing it is the buyer's decision. Counted as
+ * income up to the sale and as nothing at all after it.
+ */
+export const isConveyed = (l: Lease): boolean => Boolean(l.conveyedOn)
+
+/**
+ * A tenancy that renews by the month rather than running to a date.
+ *
+ * The sheet writes these as "M to M" in the options column. The end date beside
+ * it is the last fixed term, not a lapse: the tenancy carried on past it by
+ * agreement, and reporting it as expired misreads a standing arrangement as a
+ * problem.
+ */
+export const isMonthToMonth = (l: Lease): boolean =>
+  /\bm\s*to\s*m\b|month[\s-]*to[\s-]*month/i.test(l.renewalOptions ?? '')
+
+/** The last month of the sheet that carries a figure at all. */
+export function lastReportedIndex(l: Lease): number {
+  for (let i = l.months.length - 1; i >= 0; i -= 1) {
+    if (!isUnreported(l.months[i])) return i
+  }
+  return -1
+}
+
+/** Whether the unit was still paying in the most recent month reported. */
+export function payingLately(l: Lease): boolean {
+  const i = lastReportedIndex(l)
+  return i >= 0 && cellAmount(l.months[i]) > 0
+}
+
+/**
+ * Past its end date and still this landlord's to deal with.
+ *
+ * A lease at a sold building is excluded — it did not lapse, it conveyed — and
+ * so is a month-to-month tenancy, which has no end date to run past in any
+ * sense that matters.
+ */
 export function isExpired(l: Lease, asOf: Date = AS_OF): boolean {
+  if (isConveyed(l) || isMonthToMonth(l)) return false
   const end = parseDate(l.leaseEnd)
   return end ? end < asOf : false
 }
 
-/** A lease still collecting rent past its stated expiry. */
+/** Whether a lease ran past its end date, whoever's problem that now is. */
+export function endDatePassed(l: Lease, asOf: Date = AS_OF): boolean {
+  const end = parseDate(l.leaseEnd)
+  return end ? end < asOf : false
+}
+
+/**
+ * A lease still collecting rent past its stated expiry.
+ *
+ * Measured on the latest month the sheet reports rather than on the year's
+ * total: a tenant who paid to April and then left has a total above zero all
+ * year, and calling that a holdover in September describes a unit that is
+ * actually empty.
+ */
 export function isHoldover(l: Lease, asOf: Date = AS_OF): boolean {
-  return isExpired(l, asOf) && collected(l) > 0
+  return isExpired(l, asOf) && payingLately(l)
+}
+
+/** Past its end date and gone — an empty unit, not a tenant to negotiate with. */
+export function hasVacated(l: Lease, asOf: Date = AS_OF): boolean {
+  return isExpired(l, asOf) && !payingLately(l)
 }
 
 export const hasNoEndDate = (l: Lease): boolean => !l.leaseEnd
