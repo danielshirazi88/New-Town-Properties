@@ -27,7 +27,8 @@ import { Receivables } from './views/Receivables'
 import { SlowPayers } from './views/SlowPayers'
 import { Assets } from './views/Assets'
 import { TaxReturns } from './views/TaxReturns'
-import { EMPTY_REGISTER, type AssetRegister } from './lib/assets'
+import { EMPTY_REGISTER, applySeed, needsSeed, type AssetRegister } from './lib/assets'
+import { INVESTMENT_SEED_VERSION, SEEDED_INVESTMENTS } from './data/investments'
 import { Trust } from './views/Trust'
 import { EMPTY_TRUST_STATE, resolveTrust, type TrustState } from './lib/trust'
 import { TRUST_HOLDINGS } from './data/trust'
@@ -85,8 +86,22 @@ export default function App() {
   const profileState = useStored<TenantProfiles>(STORE_KEYS.profiles, {})
   const paymentState = useStored<Payment[]>(STORE_KEYS.payments, [])
   const collectionState = useStored<CollectionSettings>(STORE_KEYS.collection, DEFAULT_COLLECTION)
-  const assetState = useStored<AssetRegister>(STORE_KEYS.assets, EMPTY_REGISTER)
+  const assetState = useStored<AssetRegister>(
+    STORE_KEYS.assets,
+    applySeed(EMPTY_REGISTER, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION),
+  )
   const trustState = useStored<TrustState>(STORE_KEYS.trust, EMPTY_TRUST_STATE)
+
+  // Deposits ship with the application, so a new device shows them without
+  // anyone retyping the statements. The merge runs once — see `applySeed`.
+  const assetSetValue = assetState.setValue
+  const assetLoaded = assetState.loaded
+  const assetRegister = assetState.value
+  useEffect(() => {
+    if (!assetLoaded) return
+    if (!needsSeed(assetRegister, INVESTMENT_SEED_VERSION)) return
+    assetSetValue(applySeed(assetRegister, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION))
+  }, [assetLoaded, assetRegister, assetSetValue])
 
   const overrides = overridesState.value
   const payments = paymentState.value

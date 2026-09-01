@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
-  annualInterest, assetBreakdown, assetTotals, blendedRate, byInstitution, maturities,
-  realEstateTotals, registerInterest, vehicleValued,
+  EMPTY_REGISTER, annualInterest, applySeed, assetBreakdown, assetTotals, blendedRate,
+  byInstitution, maturities, needsSeed, realEstateTotals, registerInterest, vehicleValued,
   type AssetRegister, type InvestmentAsset, type VehicleAsset,
 } from '../src/lib/assets'
+import {
+  INVESTMENT_SEED_VERSION, SEEDED_INVESTMENTS, SEEDED_INVESTMENT_TOTAL,
+} from '../src/data/investments'
 
 /** A trust holding as the register sees it: use, value and debt. */
 const prop = (use: 'rental' | 'personal' | 'resale', estimatedValue?: number, debt?: number) =>
@@ -158,5 +161,111 @@ describe('the breakdown chart', () => {
       realEstateTotals([prop('rental', 5_000_000), prop('personal', 800_000)]),
     )
     expect(assetBreakdown(t).map((s) => s.id)).toEqual(['rental', 'investments', 'personal'])
+  })
+})
+
+/**
+ * The certificates, as given from the statements on 1 September 2026. These are
+ * the figures anyone will quote, so each is checked against what was said rather
+ * than only in total.
+ */
+describe('the Millennium Bank certificates', () => {
+  it('records every certificate as given', () => {
+    const given: [string, number, number, string, string][] = [
+      ['cd-mb-251107-a', 1_033_470.65, 4.5, '2025-11-07', '2026-11-07'],
+      ['cd-mb-251107-b', 516_735.32, 4.5, '2025-11-07', '2026-11-07'],
+      ['cd-mb-251107-c', 1_033_470.65, 4.5, '2025-11-07', '2026-11-07'],
+      ['cd-mb-251107-d', 1_033_470.65, 4.5, '2025-11-07', '2026-11-07'],
+      ['cd-mb-251204-a', 5_104_391.56, 4.25, '2025-12-04', '2026-12-04'],
+      ['cd-mb-251011-a', 516_750.52, 4.5, '2025-10-11', '2026-10-11'],
+      ['cd-mb-260116-a', 1_020_850.67, 4.25, '2026-01-16', '2027-01-16'],
+      ['cd-mb-260501-a', 1_010_543.45, 4.25, '2026-05-01', '2027-05-01'],
+      ['cd-mb-260501-b', 1_010_543.45, 4.25, '2026-05-01', '2027-05-01'],
+    ]
+    expect(SEEDED_INVESTMENTS).toHaveLength(given.length)
+    for (const [id, balance, ratePct, opened, matures] of given) {
+      const cd = SEEDED_INVESTMENTS.find((i) => i.id === id)!
+      expect(cd, id).toBeDefined()
+      expect(cd.balance, id).toBe(balance)
+      expect(cd.ratePct, id).toBe(ratePct)
+      expect(cd.openedDate, id).toBe(opened)
+      expect(cd.maturityDate, id).toBe(matures)
+      expect(cd.institution, id).toBe('Millennium Bank')
+      expect(cd.investmentKind, id).toBe('cd')
+    }
+  })
+
+  it('adds up to what the statements come to', () => {
+    expect(SEEDED_INVESTMENT_TOTAL).toBeCloseTo(12_280_226.92, 2)
+  })
+
+  it('throws off half a million a year at the stated rates', () => {
+    const r: AssetRegister = { ...EMPTY_REGISTER, investments: SEEDED_INVESTMENTS }
+    expect(registerInterest(r)).toBeCloseTo(532_244.39, 2)
+    expect(blendedRate(r)).toBeCloseTo(4.3342, 3)
+  })
+
+  it('keeps the certificates that look like duplicates and are not', () => {
+    // Three at $1,033,470.65 on the same day, and two at $1,010,543.45 on the
+    // same day. Deduplicating either set would lose real money.
+    const same = (n: number) => SEEDED_INVESTMENTS.filter((i) => i.balance === n)
+    expect(same(1_033_470.65)).toHaveLength(3)
+    expect(same(1_010_543.45)).toHaveLength(2)
+    expect(new Set(SEEDED_INVESTMENTS.map((i) => i.id)).size).toBe(SEEDED_INVESTMENTS.length)
+  })
+
+  it('runs every certificate exactly one year', () => {
+    for (const cd of SEEDED_INVESTMENTS) {
+      const opened = new Date(`${cd.openedDate}T00:00:00Z`)
+      const expected = new Date(opened)
+      expected.setUTCFullYear(expected.getUTCFullYear() + 1)
+      expect(cd.maturityDate, cd.id).toBe(expected.toISOString().slice(0, 10))
+    }
+  })
+
+  it('lists them by maturity, soonest first', () => {
+    const r: AssetRegister = { ...EMPTY_REGISTER, investments: SEEDED_INVESTMENTS }
+    const due = maturities(r, new Date('2026-09-01T12:00:00'))
+    expect(due).toHaveLength(9)
+    expect(due[0].investment.maturityDate).toBe('2026-10-11')
+    expect(due.at(-1)!.investment.maturityDate).toBe('2027-05-01')
+    // None has matured yet as of the day the figures were given.
+    expect(due.every((m) => !m.matured)).toBe(true)
+  })
+})
+
+describe('seeding the register', () => {
+  it('fills an empty register', () => {
+    const r = applySeed(EMPTY_REGISTER, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION)
+    expect(r.investments).toHaveLength(9)
+    expect(r.seedVersion).toBe(INVESTMENT_SEED_VERSION)
+    expect(needsSeed(r, INVESTMENT_SEED_VERSION)).toBe(false)
+  })
+
+  it('does not run twice, so a deleted row stays deleted', () => {
+    const seeded = applySeed(EMPTY_REGISTER, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION)
+    const pruned = { ...seeded, investments: seeded.investments.slice(1) }
+    expect(applySeed(pruned, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION).investments)
+      .toHaveLength(8)
+  })
+
+  it('never overwrites a balance somebody corrected', () => {
+    // The seed adds missing rows; it does not restate the ones already there.
+    const edited: AssetRegister = {
+      ...EMPTY_REGISTER,
+      investments: [{ ...SEEDED_INVESTMENTS[0], balance: 1_040_000 }],
+    }
+    const r = applySeed(edited, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION)
+    expect(r.investments.find((i) => i.id === 'cd-mb-251107-a')!.balance).toBe(1_040_000)
+    expect(r.investments).toHaveLength(9)
+  })
+
+  it('reaches a register saved before the deposits existed', () => {
+    // A register with vehicles in it but no seedVersion — the case that would
+    // otherwise never see the certificates at all.
+    const old: AssetRegister = { investments: [], vehicles: [] }
+    expect(needsSeed(old, INVESTMENT_SEED_VERSION)).toBe(true)
+    expect(applySeed(old, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION).investments)
+      .toHaveLength(9)
   })
 })

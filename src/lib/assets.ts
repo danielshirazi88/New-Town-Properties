@@ -128,6 +128,15 @@ export interface AssetRegister {
   investments: InvestmentAsset[]
   vehicles: VehicleAsset[]
   /**
+   * Which batch of seeded accounts this register has already taken.
+   *
+   * Deposits arrive with the application rather than being typed in on every
+   * device. A register saved before a batch existed would otherwise never see
+   * it, and re-merging on every load would resurrect rows somebody deleted on
+   * purpose — so the version is recorded once the merge has happened.
+   */
+  seedVersion?: number
+  /**
    * Kept only so a register saved before the trust schedule existed still parses.
    * Property is read from the schedule now; anything left here is ignored.
    *
@@ -140,6 +149,32 @@ export const EMPTY_REGISTER: AssetRegister = { investments: [], vehicles: [] }
 
 export const newAssetId = (): string =>
   `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+/* ── Seeding ─────────────────────────────────────────────────────────────── */
+
+/** True when this register has not yet taken the current batch of deposits. */
+export const needsSeed = (r: AssetRegister, version: number): boolean =>
+  (r.seedVersion ?? 0) < version
+
+/**
+ * Merge seeded deposits into a register, once.
+ *
+ * Rows already present by id are left exactly as they are — an edited balance
+ * must survive, or the seed would quietly overwrite a correction. Only genuinely
+ * new ids are added, and the version is stamped so a row deleted afterwards
+ * stays deleted.
+ */
+export function applySeed(
+  r: AssetRegister, seeded: InvestmentAsset[], version: number,
+): AssetRegister {
+  if (!needsSeed(r, version)) return r
+  const have = new Set(r.investments.map((i) => i.id))
+  return {
+    ...r,
+    investments: [...r.investments, ...seeded.filter((i) => !have.has(i.id))],
+    seedVersion: version,
+  }
+}
 
 /* ── Money ───────────────────────────────────────────────────────────────── */
 
