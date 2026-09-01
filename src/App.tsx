@@ -38,7 +38,7 @@ import type { TenantProfiles } from './lib/tenants'
 import { DEFAULT_COLLECTION, chargesForYear, payerRecordsFor, seedPayments, statusOf, trackedCharges,
   type CollectionSettings, type Payment } from './lib/receivables'
 import { AVAILABLE_YEARS, CURRENT_YEAR, isPartYear, rentRoll, yearLabel } from './data/rentRolls'
-import { DEFAULT_CAP_RATE } from './lib/portfolio'
+import { DEFAULT_CAP_RATE, DEFAULT_OPEX_LOAD_PCT } from './lib/portfolio'
 import { FILED_RETURNS } from './data/taxReturns'
 
 type Tab =
@@ -334,6 +334,9 @@ export default function App() {
             expenses={expenses}
             payments={payments}
             collection={collectionState.value}
+            register={assetState.value}
+            holdings={trustHoldings}
+            opexLoadPct={DEFAULT_OPEX_LOAD_PCT}
             onProperty={goProperty}
             onNav={(t) => setTab(t as Tab)}
           />

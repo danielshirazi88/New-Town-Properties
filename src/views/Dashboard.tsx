@@ -10,17 +10,39 @@ import {
   MONTH_NAMES, chargesForYear, statusOf, trackedCharges,
   type CollectionSettings, type Payment,
 } from '../lib/receivables'
+import { estateIncome, estateValue, valueSlices } from '../lib/estate'
+import { blendedRate, maturities, type AssetRegister } from '../lib/assets'
+import type { ResolvedHolding } from '../lib/trust'
+import { DonutChart } from '../components/charts'
 
 export function Dashboard({
-  k, expenses, payments, collection, onProperty, onNav,
+  k, expenses, payments, collection, register, holdings, opexLoadPct, onProperty, onNav,
 }: {
   k: PortfolioKpis
   expenses: Expense[]
   payments: Payment[]
   collection: CollectionSettings
+  /** Deposits and vehicles — the income that is not rent. */
+  register: AssetRegister
+  /** The trust's schedule, which is the register of what is owned. */
+  holdings: ResolvedHolding[]
+  /** The operating allowance the valuation screen is set to, so both agree. */
+  opexLoadPct: number
   onProperty: (id: string) => void
   onNav: (tab: string) => void
 }) {
+  // Rent is one source of income, not the whole of it. These put the property
+  // and the deposits on the same footing before either is quoted.
+  const income = estateIncome(
+    k.grossCollected, k.totalTaxes, register, opexLoadPct, k.reportedMonths,
+  )
+  const worth = estateValue(holdings, register)
+  const slices = valueSlices(worth)
+  const blended = blendedRate(register)
+  const due = maturities(register, k.asOf)
+  const matured = due.filter((m) => m.matured)
+  const dueSoon = due.filter((m) => !m.matured && m.daysAway <= 90)
+  const maturingSoon = dueSoon.reduce((a, m) => a + m.investment.balance, 0)
   // Rent still arriving from tenants whose lease end date has passed — the
   // figure that says how much income is running without a contract behind it.
   const holdoverRent = k.holdoverLeases.reduce((a, l) => a + collected(l), 0)
@@ -68,8 +90,10 @@ export function Dashboard({
       <div className="page-head">
         <h1 className="welcome">Welcome, <em>Mr. Shirazi</em></h1>
         <p className="page-sub">
-          {k.propertyCount} properties · {num(k.unitCount)} commercial units · {k.apolloLots} mobile-home lots.
-          Figures are the {k.fiscalYear} rent roll; lease timing is measured from today,{' '}
+          {k.propertyCount} properties · {num(k.unitCount)} commercial units · {k.apolloLots} mobile-home
+          lots · {num(register.investments.length)} bank accounts. The estate first, then the
+          property behind it; each tab on the left goes further into one part.
+          Lease timing is measured from today,{' '}
           {k.asOf.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.
           <br />
           <span className="t-mute">
@@ -79,7 +103,106 @@ export function Dashboard({
         </p>
       </div>
 
-      {/* ── The headline numbers ─────────────────────────────────────────── */}
+      {/* ── The whole estate, before anything is broken down ─────────────── */}
+      <div className="section">
+        <div className="section-title">
+          What the estate earns
+          <span className="hint">
+            property and deposits together, for a full year
+            {income.annualised && ` · rent scaled up from ${income.monthsReported} months`}
+          </span>
+        </div>
+        <div className="kpi-grid">
+          <Kpi accent label="Net income a month" value={money(income.monthlyNet)}
+            note="Everything, after property tax and running costs" />
+          <Kpi accent label="Net income a year" value={money(income.totalNet)}
+            note={`${money(income.propertyGross)} of rent and ${money(income.investmentIncome)} of interest`} />
+          <Kpi label="From property" value={money(income.propertyNet)}
+            note={`${pct((income.propertyNet / income.totalNet) * 100)} of the total · ${money(income.propertyNet / 12)} a month`} />
+          <Kpi label="From investments" value={money(income.investmentIncome)}
+            note={`${pct((income.investmentIncome / income.totalNet) * 100)} of the total · ${money(income.investmentIncome / 12)} a month`} />
+          <Kpi label="What the estate is worth" value={moneyShort(worth.net)}
+            note={`${money(worth.gross)} of assets${worth.debt > 0 ? `, less ${money(worth.debt)} of debt` : ', no debt recorded'}`} />
+          <Kpi label="Yield on the whole estate" value={pct((income.totalNet / worth.net) * 100, 2)}
+            note="Net income against what it is all worth" />
+        </div>
+        <p className="t-mute" style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.6 }}>
+          Income before income tax, before any debt service and before anything personal — what the
+          assets throw off, not what reaches a current account. Rent is net of property tax and a{' '}
+          {pct(opexLoadPct)} operating allowance for the costs the rent roll never captured;
+          interest is at the rates on the certificates.{' '}
+          <button className="link" onClick={() => onNav('valuation')}>Change the allowance</button>.
+        </p>
+      </div>
+
+      {/* ── Where it comes from, and what it is made of ──────────────────── */}
+      <div className="section">
+        <div className="grid-2">
+          <Card title="How the year's rent becomes income" hint="annualised, before income tax">
+            <div className="table-wrap" style={{ border: 0 }}>
+              <table>
+                <tbody>
+                  <tr><td>Gross rent</td><td className="num t-strong">{money(income.propertyGross)}</td></tr>
+                  <tr><td className="t-mute">Less property tax</td><td className="num t-mute">− {money(income.propertyTaxes)}</td></tr>
+                  <tr><td className="t-mute">Less operating allowance</td><td className="num t-mute">− {money(income.propertyOpex)}</td></tr>
+                  <tr><td className="t-strong">Net from property</td><td className="num t-strong">{money(income.propertyNet)}</td></tr>
+                  <tr><td>Interest on deposits</td><td className="num t-strong">{money(income.investmentIncome)}</td></tr>
+                  <tr>
+                    <td className="label">Net income</td>
+                    <td className="num t-strong">{money(income.totalNet)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
+          <Card title="What the estate is made of" hint={`${money(worth.gross)} across every holding`}>
+            <DonutChart
+              slices={slices}
+              centreValue={moneyShort(worth.gross)}
+              centreLabel="Total assets"
+              onSelect={(id) => onNav(id === 'deposits' || id === 'vehicles' ? 'assets' : 'trust')}
+            />
+          </Card>
+        </div>
+      </div>
+
+      {/* ── The deposits, which the dashboard used to ignore entirely ────── */}
+      {register.investments.length > 0 && (
+        <div className="section">
+          <div className="section-title">
+            Deposits and investments
+            <span className="hint">
+              <button className="link" onClick={() => onNav('assets')}>every account</button>
+            </span>
+          </div>
+          <div className="kpi-grid">
+            <Kpi accent label="Held on deposit" value={money(worth.deposits)}
+              note={`${num(register.investments.length)} accounts`} />
+            <Kpi accent label="Interest a year" value={money(income.investmentIncome)}
+              note={`${money(income.investmentIncome / 12)} a month`} />
+            <Kpi label="Blended rate" value={blended === undefined ? '—' : pct(blended, 2)}
+              note="Across everything carrying a rate" />
+            <Kpi label="Maturing within 90 days" value={money(maturingSoon)}
+              note={dueSoon.length > 0
+                ? `${num(dueSoon.length)} ${dueSoon.length === 1 ? 'account' : 'accounts'} — a decision each`
+                : 'Nothing due'}
+              warn={dueSoon.length > 0} />
+            {matured.length > 0 && (
+              <Kpi label="Already matured" value={num(matured.length)}
+                note="Sitting uninvested" warn />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── The property side on its own ─────────────────────────────────── */}
+      <div className="section">
+        <div className="section-title">
+          Property income
+          <span className="hint">
+            as the {k.fiscalYear} sheet reports it — {k.reportedMonths} months, not annualised
+          </span>
+        </div>
       <div className="kpi-grid">
         <Kpi accent label={`Gross income ${k.fiscalYear}`} value={money(k.grossCollected)}
           note={`${money(k.avgMonth + k.apolloGross / 12)} average month`} />
@@ -93,6 +216,7 @@ export function Dashboard({
           note="Operating expenses only; capital spend excluded" />
         <Kpi label="Forward run rate" value={money(k.forwardRunRate)}
           note={`Exit rent annualised · ${signedPct(k.runRateVsActualPct)} vs ${k.fiscalYear}`} />
+      </div>
       </div>
 
       {k.apolloBasis === 'derived' && (
