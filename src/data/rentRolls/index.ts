@@ -74,11 +74,11 @@ export const RENT_ROLLS: Record<number, RentRollYear> = {
     leases: LEASES_2026,
     tax: TAX_2026,
     apolloGross: APOLLO_GROSS_2026,
-    apolloBasis: 'derived',
-    apolloNote: 'The 2026 rent roll leaves Apollo out. This is the July 2026 tenant registry\'s '
-      + 'monthly billing across the eight months the sheet covers — a fair estimate, but it '
-      + 'assumes the lot rents did not move earlier in the year. Replace it with the park\'s '
-      + 'actual 2026 figure when there is one.',
+    apolloBasis: 'printed',
+    apolloNote: 'Transcribed from the park\'s own 2026 rent roll, January to August. Every month '
+      + 'ties to the total printed at the foot of its column. It replaces a figure derived from '
+      + 'the July registry, which assumed the lot rents had not moved earlier in the year — they '
+      + 'had, on eight of the thirty-seven lots, and the estimate ran $6,780 high.',
     statedTotals: STATED_TOTALS_2026,
     variances: KNOWN_VARIANCES_2026,
     monthsReported: MONTHS_REPORTED_2026,

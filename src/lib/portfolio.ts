@@ -187,9 +187,13 @@ export function resolveData(
     .filter((p) => p.acquiredYear === undefined || year >= p.acquiredYear)
     .map((p) => {
       const tax = roll.tax[p.id]
-      const gross = p.id === 'apollo'
-        ? roll.apolloGross
-        : roll.leases.filter((l) => l.propertyId === p.id).reduce((a, l) => a + l.statedAnnualTotal, 0)
+      const own = roll.leases.filter((l) => l.propertyId === p.id)
+      // Apollo was a single annual figure until its own rent roll arrived. Where
+      // the park now has lease rows they are the source, and the annual figure
+      // is only a fallback for the years that still have nothing else.
+      const gross = own.length > 0
+        ? own.reduce((a, l) => a + l.statedAnnualTotal, 0)
+        : (p.id === 'apollo' ? roll.apolloGross : 0)
       return {
         ...p,
         taxBill: tax?.bill ?? 0,
@@ -236,10 +240,18 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
   // measured as though its blank months were zeros.
   const reportedMonths = rentRoll(data.year).monthsReported
   const { properties: PROPS, leases: ALL_LEASES, apolloTenants: APOLLO } = data
-  const commercialLeases = ALL_LEASES
+  // The park's lots are leases like any other and are charged, aged and chased
+  // like any other — but they are not commercial suites, and every measure built
+  // for suites (rent per square foot, WALT, tenant concentration, the expiration
+  // ladder) would be swamped by thirty-seven month-to-month lots. So the split
+  // holds, and it is the one place a lot must not be counted twice.
+  const apolloLeases = ALL_LEASES.filter((l) => l.propertyId === 'apollo')
+  const commercialLeases = ALL_LEASES.filter((l) => l.propertyId !== 'apollo')
   const commercialGross = commercialLeases.reduce((a, l) => a + collected(l), 0)
   const apolloProp = PROPS.find((p) => p.id === 'apollo')!
-  const apolloGross = apolloProp.statedGross
+  const apolloGross = apolloLeases.length > 0
+    ? apolloLeases.reduce((a, l) => a + collected(l), 0)
+    : apolloProp.statedGross
   const grossCollected = commercialGross + apolloGross
 
   const props = PROPS.map((p) => propertyMetrics(p, ALL_LEASES, grossCollected, asOf, reportedMonths))
@@ -256,7 +268,10 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
   // would understate every month that did happen and credit the park with income
   // in months nobody has reported yet.
   const apolloPerMonth = apolloGross / reportedMonths
-  const monthlyWithApollo = monthly.map((m, i) => m + (i < reportedMonths ? apolloPerMonth : 0))
+  const apolloMonthly = apolloLeases.length > 0
+    ? monthlySeries(apolloLeases)
+    : monthly.map((_, i) => (i < reportedMonths ? apolloPerMonth : 0))
+  const monthlyWithApollo = monthly.map((m, i) => m + apolloMonthly[i])
 
   const bestIdx = monthly.indexOf(Math.max(...monthly))
   const worstIdx = monthly.indexOf(Math.min(...monthly))

@@ -46,8 +46,8 @@ describe('what the estate earns', () => {
   })
 
   it('comes to what the dashboard quotes', () => {
-    expect(Math.round(income.totalNet)).toBe(2_402_859)
-    expect(Math.round(income.monthlyNet)).toBe(200_238)
+    expect(Math.round(income.totalNet)).toBe(2_393_909)
+    expect(Math.round(income.monthlyNet)).toBe(199_492)
   })
 
   it('leaves the property side alone on a full year', () => {

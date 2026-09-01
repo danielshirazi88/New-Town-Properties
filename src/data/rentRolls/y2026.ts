@@ -1,5 +1,6 @@
 import type { Lease, MonthCell } from '../../lib/types'
 import { APOLLO_TENANTS } from '../apollo'
+import { APOLLO_LEASES_2026 } from './apollo2026'
 
 const r = (value: MonthCell, n: number): MonthCell[] => Array.from({ length: n }, () => value)
 /** September onward is not on this sheet yet — not reported, not vacant. */
@@ -154,6 +155,9 @@ export const LEASES_2026: Lease[] = [
     months: [...r(8149, 5), ...r(7700, 3), ...rest], statedAnnualTotal: 63845,
     leaseStart: '2020-11-01', leaseEnd: '2030-10-31', statedEscalationPct: 2, leaseType: 'NNN',
     squareFeet: 1750, securityDeposit: 7000, renewalOptions: '5YR + 5YR' },
+
+  // ─── Apollo Mobile Home Court — 37 lots ──────────────────────────────────
+  ...APOLLO_LEASES_2026,
 ]
 
 LEASES_2026.push(
@@ -357,17 +361,16 @@ export const MONTHS_REPORTED_2026 = 8
 export const APOLLO_MONTHLY_2026 = APOLLO_TENANTS.reduce((a, t) => a + t.amountDue, 0)
 
 /**
- * Apollo's 2026 income to date — the registry's monthly figure across the eight
- * months the rent roll covers, so the park and the commercial suites span the
- * same period and can be added together.
+ * Apollo's 2026 income to date, from the park's own rent roll.
  *
- * This is derived, not transcribed. The registry states what is due each month
- * as of July; applying it to January assumes the rents did not move earlier in
- * the year, which is an assumption rather than a fact — 2025's $378,870 against
- * this $397,200 annualised says they do move. It is marked as derived wherever
- * it is shown, and the moment a real 2026 figure arrives it should replace this.
+ * This used to be derived — the July registry's monthly figure multiplied out
+ * across eight months — on the assumption that the rents had not moved earlier
+ * in the year. They had. The real sheet comes to $258,020 against the $264,800
+ * that assumption produced, $6,780 over, and eight of the thirty-seven lots
+ * changed rent mid-year. The figure is now transcribed and every month ties to
+ * the total printed at the foot of its column.
  */
-export const APOLLO_GROSS_2026 = APOLLO_MONTHLY_2026 * MONTHS_REPORTED_2026
+export { APOLLO_GROSS_2026 } from './apollo2026'
 
 /**
  * The 2026 sheet prints no row or page totals, so there is nothing to reconcile

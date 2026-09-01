@@ -583,23 +583,22 @@ describe('a part year measured honestly', () => {
 
   it('no longer reports the park as zero income on 2026', () => {
     // It used to read $0, which said "earned nothing" when it meant "not in the
-    // document". The registry now fills it, flagged as a derivation.
+    // document". The park's own rent roll now fills it.
     const k = computeKpis(undefined, resolveData(undefined, 2026))
-    expect(k.apolloGross).toBeGreaterThan(200_000)
-    expect(k.apolloBasis).toBe('derived')
+    expect(k.apolloGross).toBe(258_020)
+    expect(k.apolloBasis).toBe('printed')
   })
 })
 
 describe("Apollo's part-year income", () => {
-  it('takes 2026 from the July 2026 registry, and says it is derived', () => {
-    // The 2026 rent roll leaves the park out; the registry is itself a 2026
-    // document, so it is the better source — but it is a derivation and the
-    // app has to be able to say so.
+  it('takes 2026 from the park’s own rent roll now that there is one', () => {
+    // It used to multiply the July registry out across eight months, on the
+    // assumption the lot rents had not moved earlier in the year. They had.
     const roll = rentRoll(2026)
-    expect(roll.apolloBasis).toBe('derived')
-    expect(roll.apolloNote).toBeTruthy()
-    // 37 lots and 5 parking spaces at the registry's rates, over eight months.
-    expect(roll.apolloGross).toBe(33_100 * 8)
+    expect(roll.apolloBasis).toBe('printed')
+    expect(roll.apolloGross).toBe(258_020)
+    // $6,780 below what the assumption produced.
+    expect(33_100 * 8 - roll.apolloGross).toBe(6_780)
   })
 
   it('leaves the years whose sheets state a figure alone', () => {
@@ -608,15 +607,15 @@ describe("Apollo's part-year income", () => {
     expect(rentRoll(2024).apolloBasis).toBe('printed')
   })
 
-  it('spreads the park across the months its source covers, not across twelve', () => {
-    // Dividing eight months of income by twelve would understate every month
-    // that happened and credit the park with rent in months nobody has reported.
+  it('uses the park’s real months rather than spreading one figure evenly', () => {
+    // The months are not equal — July and August are higher, and a flat spread
+    // would hide both the rises and the eight lots whose rent moved.
     const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2026))
-    const commercial = k.monthly
-    expect(k.monthlyWithApollo[0] - commercial[0]).toBeCloseTo(33_100, 2)
-    expect(k.monthlyWithApollo[7] - commercial[7]).toBeCloseTo(33_100, 2)
+    const park = k.monthlyWithApollo.map((v, i) => v - k.monthly[i])
+    expect(park.slice(0, 8).map(Math.round))
+      .toEqual([32_070, 32_070, 32_070, 32_070, 32_070, 32_070, 32_750, 32_850])
     // September onward is unreported for both.
-    expect(k.monthlyWithApollo[8] - commercial[8]).toBe(0)
+    expect(park[8]).toBe(0)
   })
 
   it('still divides a full year by twelve', () => {
@@ -628,18 +627,22 @@ describe("Apollo's part-year income", () => {
     // Adding eight months of park income to twelve months of rent would drag the
     // run rate down by a third of Apollo.
     const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2026))
-    expect(k.forwardRunRate).toBeGreaterThan(33_100 * 12)
+    expect(k.forwardRunRate).toBeGreaterThan(32_850 * 12)
   })
 })
 
 describe('a property reported as one annual figure', () => {
-  it('spreads Apollo across the months the sheet covers', () => {
+  it('reads Apollo month by month now that the park has a sheet of its own', () => {
     const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2026))
     const apollo = k.properties.find((p) => p.property.id === 'apollo')!
-    expect(apollo.monthly.slice(0, 8).every((m) => Math.abs(m - 33_100) < 1)).toBe(true)
+    expect(apollo.monthly.slice(0, 8).map(Math.round))
+      .toEqual([32_070, 32_070, 32_070, 32_070, 32_070, 32_070, 32_750, 32_850])
     // Nothing in the months nobody has reported.
     expect(apollo.monthly.slice(8)).toEqual([0, 0, 0, 0])
-    expect(apollo.collected).toBe(33_100 * 8)
+    expect(apollo.collected).toBe(258_020)
+    // Thirty-seven lots, every one of them let.
+    expect(apollo.unitCount).toBe(37)
+    expect(apollo.physicalOccupancyPct).toBe(100)
   })
 
   it('still spreads a full year across twelve', () => {
@@ -958,7 +961,7 @@ describe('asking rents on empty space', () => {
       expect(isOnTheMarket(unit(u)), u).toBe(true)
     }
     expect(p1.collected).toBe(271_043)
-    expect(k.grossCollected).toBeCloseTo(1_915_271, 0)
+    expect(k.grossCollected).toBeCloseTo(1_908_491, 0)
   })
 
   it('values the downtime at the asking rent instead of at nothing', () => {
@@ -1113,7 +1116,8 @@ describe('the rate carried forward', () => {
     const held = k.properties.filter((p) => p.property.soldYear !== 2026)
     const jan = held.reduce((a, p) => a + p.monthly[0], 0)
     const last = held.reduce((a, p) => a + p.monthly[k.reportedMonths - 1], 0)
-    // On the buildings still owned, rent rose.
-    expect(((last - jan) / jan) * 100).toBeCloseTo(0.81, 2)
+    // On the buildings still owned, rent rose — the park's July and August
+    // increases are in here too, now that its months are real.
+    expect(((last - jan) / jan) * 100).toBeCloseTo(1.17, 2)
   })
 })
