@@ -29,6 +29,7 @@ import { Assets } from './views/Assets'
 import { TaxReturns } from './views/TaxReturns'
 import { EMPTY_REGISTER, applySeed, needsSeed, type AssetRegister } from './lib/assets'
 import { INVESTMENT_SEED_VERSION, SEEDED_INVESTMENTS } from './data/investments'
+import { PAYMENT_SEED_VERSION, SEEDED_PAYMENTS } from './data/payments'
 import { Trust } from './views/Trust'
 import { EMPTY_TRUST_STATE, resolveTrust, type TrustState } from './lib/trust'
 import { TRUST_HOLDINGS } from './data/trust'
@@ -84,8 +85,11 @@ export default function App() {
   const expensesState = useStored<Expense[]>(STORE_KEYS.expenses, [])
   const taxState = useStored<TaxEntries>(STORE_KEYS.taxes, {})
   const profileState = useStored<TenantProfiles>(STORE_KEYS.profiles, {})
-  const paymentState = useStored<Payment[]>(STORE_KEYS.payments, [])
-  const collectionState = useStored<CollectionSettings>(STORE_KEYS.collection, DEFAULT_COLLECTION)
+  const paymentState = useStored<Payment[]>(STORE_KEYS.payments, SEEDED_PAYMENTS)
+  const collectionState = useStored<CollectionSettings>(
+    STORE_KEYS.collection,
+    { ...DEFAULT_COLLECTION, paymentSeedVersion: PAYMENT_SEED_VERSION },
+  )
   const assetState = useStored<AssetRegister>(
     STORE_KEYS.assets,
     applySeed(EMPTY_REGISTER, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION),
@@ -102,6 +106,25 @@ export default function App() {
     if (!needsSeed(assetRegister, INVESTMENT_SEED_VERSION)) return
     assetSetValue(applySeed(assetRegister, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION))
   }, [assetLoaded, assetRegister, assetSetValue])
+
+  // Payments read off invoices ship with the application, the same way the bank
+  // accounts do. The merge runs once, keyed on a version in the collection
+  // settings, so a payment deleted afterwards stays deleted.
+  const collectionSetValue = collectionState.setValue
+  const paymentSetValue = paymentState.setValue
+  const collectionLoaded = collectionState.loaded
+  const paymentsLoaded = paymentState.loaded
+  const collectionValue = collectionState.value
+  const paymentsValue = paymentState.value
+  useEffect(() => {
+    if (!collectionLoaded || !paymentsLoaded) return
+    if ((collectionValue.paymentSeedVersion ?? 0) >= PAYMENT_SEED_VERSION) return
+    const have = new Set(paymentsValue.map((p) => p.id))
+    const missing = SEEDED_PAYMENTS.filter((p) => !have.has(p.id))
+    if (missing.length > 0) paymentSetValue([...paymentsValue, ...missing])
+    collectionSetValue({ ...collectionValue, paymentSeedVersion: PAYMENT_SEED_VERSION })
+  }, [collectionLoaded, paymentsLoaded, collectionValue, paymentsValue,
+    collectionSetValue, paymentSetValue])
 
   const overrides = overridesState.value
   const payments = paymentState.value

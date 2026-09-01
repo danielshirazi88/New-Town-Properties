@@ -893,18 +893,21 @@ describe('what counts as an expired lease', () => {
     expect(hasVacated(gone, asOf)).toBe(true)
     expect(isHoldover(gone, asOf)).toBe(false)
 
-    const staying = at('plaza-1', '1F')
-    expect(payingLately(staying)).toBe(true)
-    expect(isHoldover(staying, asOf)).toBe(true)
-    expect(hasVacated(staying, asOf)).toBe(false)
+    // A tenant paying inside a live term is neither.
+    const current = at('plaza-1', '1F')
+    expect(payingLately(current)).toBe(true)
+    expect(isHoldover(current, asOf)).toBe(false)
+    expect(hasVacated(current, asOf)).toBe(false)
   })
 
-  it('is left with exactly one real holdover', () => {
-    // Purpura Beauty Spa, lapsed 31 May 2026 and still paying every month.
-    expect(k.holdoverLeases).toHaveLength(1)
-    expect(k.holdoverLeases[0].unit).toBe('1F')
-    expect(k.holdoverLeases[0].leaseEnd).toBe('2026-05-31')
+  it('has nobody on holdover once Purpura’s renewal is recorded', () => {
+    // The sheet still prints 1F expiring 31 May 2026; it was renewed on its
+    // two-year option to 2028. With that in, no tenant is paying past a term.
+    expect(at('plaza-1', '1F').leaseEnd).toBe('2028-05-31')
+    expect(k.holdoverLeases).toEqual([])
+    // The only thing left past an end date is the empty house.
     expect(k.vacatedLeases.map((l) => l.unit)).toEqual(['1643 N 43rd'])
+    expect(k.expiredLeases.map((l) => l.unit)).toEqual(['1643 N 43rd'])
   })
 
   it('keeps a sold building’s income while dropping its lease risk', () => {

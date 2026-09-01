@@ -4,6 +4,10 @@ import {
   payerRecordsFor, periodOf, statusOf, trackedCharges, type Payment, type RentCharge,
 } from '../src/lib/receivables'
 import type { Lease } from '../src/lib/types'
+import { PAYMENT_SEED_VERSION, SEEDED_PAYMENTS } from '../src/data/payments'
+import { computeKpis, resolveData } from '../src/lib/portfolio'
+import { rentRoll } from '../src/data/rentRolls'
+import { chargesForYear } from '../src/lib/receivables'
 
 const lease = (months: Lease['months']): Lease => ({
   id: 'test-lease', propertyId: 'p', unit: '1A', tenant: 'Test Tenant',
@@ -357,5 +361,110 @@ describe('rent beyond the end of the sheet', () => {
     expect(statusOf(sep, [], new Date('2026-08-31T12:00:00'), settled).state).toBe('upcoming')
     expect(statusOf(sep, [], new Date('2026-09-01T09:00:00'), settled).state).toBe('due')
     expect(statusOf(sep, [], new Date('2026-09-06T09:00:00'), settled).state).toBe('late')
+  })
+})
+
+/**
+ * Gotti's Hideaway, the one tenant behind — checked against the final invoice
+ * of 30 August 2026, which bills $7,700 of August rent less $3,850 received,
+ * plus $375 of late fees, for $4,225 due.
+ */
+describe("the one tenant in arrears", () => {
+  const settings = { ...DEFAULT_COLLECTION, paymentSeedVersion: PAYMENT_SEED_VERSION }
+  const leases = computeKpis(new Date('2026-09-01T12:00:00'), resolveData(undefined, 2026))
+    .properties.flatMap((p) => p.leases)
+  const charges = chargesForYear(leases, 2026, {
+    reportedMonths: rentRoll(2026).monthsReported, carryForward: true,
+  })
+  const august = charges.find((c) => c.leaseId === 'mp-gottis' && c.period === '2026-08')!
+  const at = (iso: string) => statusOf(august, SEEDED_PAYMENTS, new Date(`${iso}T12:00:00`), settings)
+
+  it('records half of August against the right lease and month', () => {
+    expect(SEEDED_PAYMENTS).toHaveLength(1)
+    const [p] = SEEDED_PAYMENTS
+    expect(p.leaseId).toBe('mp-gottis')
+    expect(p.period).toBe('2026-08')
+    expect(p.amount).toBe(3_850)
+    expect(august.amountDue).toBe(7_700)
+  })
+
+  it('reproduces the invoice exactly on the day it was written', () => {
+    // $7,700 rent + $375 late fees − $3,850 received = $4,225 due.
+    const s = at('2026-08-30')
+    expect(s.paid).toBe(3_850)
+    expect(s.balance).toBe(3_850)
+    expect(s.lateDays).toBe(25)
+    expect(s.lateFee).toBe(375)
+    expect(s.balance + s.lateFee).toBe(4_225)
+    expect(s.state).toBe('partial')
+  })
+
+  it('keeps the fee running after the invoice was cut', () => {
+    // The debt does not stop growing because someone printed a total.
+    const s = at('2026-09-01')
+    expect(s.lateDays).toBe(27)
+    expect(s.lateFee).toBe(27 * LATE_FEE_PER_DAY)
+    expect(s.balance).toBe(3_850)
+  })
+
+  it('charges from the sixth, not from the first', () => {
+    // Nothing accrues inside the grace period, however far into it we are.
+    expect(at('2026-08-05').lateDays).toBe(0)
+    expect(at('2026-08-05').lateFee).toBe(0)
+    expect(at('2026-08-06').lateDays).toBe(1)
+    expect(august.graceThrough.getDate()).toBe(GRACE_THROUGH_DAY)
+  })
+
+  it('overrides the settled-through declaration for this month alone', () => {
+    // The declaration says everything to August is clean. A month with a payment
+    // on file is worked out from the money instead — which is the whole reason
+    // this arrears shows at all.
+    expect(settings.settledThrough).toBe('2026-08')
+    const s = at('2026-09-01')
+    expect(s.settledByDeclaration).toBe(false)
+
+    // Every other tenant's August is still settled by the declaration.
+    const otherAugust = charges.filter((c) => c.period === '2026-08' && c.leaseId !== 'mp-gottis')
+    expect(otherAugust.length).toBeGreaterThan(30)
+    for (const c of otherAugust) {
+      const st = statusOf(c, SEEDED_PAYMENTS, new Date('2026-09-01T12:00:00'), settings)
+      expect(st.settledByDeclaration, c.leaseId).toBe(true)
+      expect(st.balance, c.leaseId).toBe(0)
+      expect(st.lateFee, c.leaseId).toBe(0)
+    }
+  })
+
+  it('leaves Gotti as the only tenant carrying a late fee', () => {
+    const asOf = new Date('2026-09-01T12:00:00')
+    const owing = charges
+      .map((c) => statusOf(c, SEEDED_PAYMENTS, asOf, settings))
+      .filter((s) => s.lateFee > 0)
+    expect(owing).toHaveLength(1)
+    expect(owing[0].charge.leaseId).toBe('mp-gottis')
+    expect(owing.reduce((a, s) => a + s.lateFee, 0)).toBe(405)
+  })
+
+  it('does not call one late month a chronic payer', () => {
+    // The months before August were declared clean rather than recorded one by
+    // one, so nothing has settled with a date and the on-time rate comes back
+    // 0% — no record at all, not a bad one. Read as a rate it would put a
+    // tenant of six years on "late most months" from a single invoice.
+    const [gotti] = payerRecordsFor(
+      charges.filter((c) => c.leaseId === 'mp-gottis'),
+      SEEDED_PAYMENTS, new Date('2026-09-01T12:00:00'), settings,
+    )
+    expect(gotti.chargesSettled).toBe(0)
+    expect(gotti.monthsLate).toBe(1)
+    expect(gotti.onTimeRatePct).toBe(0)
+  })
+
+  it('has September due but not yet late for everyone', () => {
+    // The 1st is inside the grace period, so nothing new is late today.
+    const asOf = new Date('2026-09-01T12:00:00')
+    const sept = charges.filter((c) => c.period === '2026-09')
+      .map((c) => statusOf(c, SEEDED_PAYMENTS, asOf, settings))
+    expect(sept.length).toBeGreaterThan(30)
+    expect(sept.every((s) => s.state === 'due')).toBe(true)
+    expect(sept.every((s) => s.lateFee === 0)).toBe(true)
   })
 })

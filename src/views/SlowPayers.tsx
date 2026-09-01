@@ -20,10 +20,18 @@ const TIER: Record<Tier, { label: string; cls: string; note: string }> = {
   reliable: { label: 'Reliable', cls: 'paid', note: 'Pays within grace' },
 }
 
+/**
+ * An on-time rate needs months that actually settled with a payment date behind
+ * them. Where none have — because the months before were declared clean rather
+ * than recorded one by one — the rate comes back 0%, which is not a bad record
+ * but no record at all. Judging on it turns a tenant's first late month into
+ * "late most months".
+ */
 const tierOf = (r: PayerRecord): Tier => {
   if (r.chargesSettled === 0 && r.chargesOpen === 0) return 'reliable'
-  if (r.onTimeRatePct < 50 || r.monthsLate >= 4) return 'chronic'
-  if (r.onTimeRatePct < 80 || r.monthsLate >= 2) return 'slow'
+  const rated = r.chargesSettled > 0
+  if ((rated && r.onTimeRatePct < 50) || r.monthsLate >= 4) return 'chronic'
+  if ((rated && r.onTimeRatePct < 80) || r.monthsLate >= 2) return 'slow'
   if (r.monthsLate > 0) return 'watch'
   return 'reliable'
 }

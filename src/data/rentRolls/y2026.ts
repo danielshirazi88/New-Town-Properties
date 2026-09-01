@@ -44,8 +44,12 @@ export const LEASES_2026: Lease[] = [
   { id: 'p1-purpura', propertyId: 'plaza-1', unit: '1F', tenant: 'Purpura Beauty Spa',
     contacts: [{ name: 'Diana Bernal', phone: '630-850-0291' }],
     months: [...r(3640, 4), ...r(3822, 4), ...rest], statedAnnualTotal: 29848,
-    leaseStart: '2022-06-01', leaseEnd: '2026-05-31', statedEscalationPct: 5, leaseType: 'MG',
-    squareFeet: 2100, securityDeposit: 3000, renewalOptions: '2YR' },
+    leaseStart: '2022-06-01', leaseEnd: '2028-05-31', statedEscalationPct: 5, leaseType: 'MG',
+    squareFeet: 2100, securityDeposit: 3000, renewalOptions: '2YR',
+    // The sheet still prints the 2026 expiry, which is the term before this one.
+    // Renewed on the two-year option to 31 May 2028, confirmed by the owner on
+    // 1 September 2026 — so the one lease the app read as a holdover is not one.
+    notes: 'Renewed to 31 May 2028 on the 2YR option. The sheet still prints the old 2026 expiry.' },
   { id: 'p1-superbubble', propertyId: 'plaza-1', unit: '1G', tenant: 'Superbubble',
     contacts: [{ name: 'Oscar Martinez', phone: '847-769-2183' }],
     months: [...r(5962, 3), ...r(6248, 5), ...rest], statedAnnualTotal: 49126,

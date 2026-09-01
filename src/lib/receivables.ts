@@ -401,6 +401,14 @@ export interface CollectionSettings {
   /** When the declaration was made, and by whom, so it can be read back later. */
   settledDeclaredOn?: string
   settledNote?: string
+  /**
+   * Which batch of documented payments this ledger has already taken.
+   *
+   * Payments read off invoices ship with the application rather than being
+   * keyed in on every device. Kept here rather than beside the payments, which
+   * are a plain array with nowhere to record it.
+   */
+  paymentSeedVersion?: number
 }
 
 export const inTrackingWindow = (charge: RentCharge, start?: string): boolean =>
@@ -433,7 +441,9 @@ export const MONTH_NAMES = [
 export const DEFAULT_COLLECTION: CollectionSettings = {
   settledThrough: '2026-08',
   settledDeclaredOn: '2026-08-31',
-  settledNote: 'Confirmed by Mr. Shirazi on 31 August 2026: every tenant current, no arrears. '
-    + 'Months through August 2026 are settled by that declaration rather than by recorded '
-    + 'payments, so they carry no payment date and are excluded from days-to-pay.',
+  settledNote: 'Confirmed by Mr. Shirazi on 31 August 2026: every tenant current through August '
+    + 'bar one. Months to August are settled by that declaration rather than by recorded '
+    + 'payments, so they carry no payment date and are excluded from days-to-pay. The '
+    + 'declaration does not cover a month with a payment on file — Gotti\'s Hideaway paid half '
+    + 'of August, and that month is worked out from the money rather than declared clean.',
 }
