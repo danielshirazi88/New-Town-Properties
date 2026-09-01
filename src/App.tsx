@@ -35,7 +35,7 @@ import { EMPTY_TRUST_STATE, resolveTrust, type TrustState } from './lib/trust'
 import { TRUST_HOLDINGS } from './data/trust'
 import { TenantProfileView } from './views/TenantProfile'
 import type { TenantProfiles } from './lib/tenants'
-import { DEFAULT_COLLECTION, chargesForYear, payerRecordsFor, statusOf, trackedCharges,
+import { DEFAULT_COLLECTION, chargesForYear, payerRecordsFor, seedPayments, statusOf, trackedCharges,
   type CollectionSettings, type Payment } from './lib/receivables'
 import { AVAILABLE_YEARS, CURRENT_YEAR, isPartYear, rentRoll, yearLabel } from './data/rentRolls'
 import { DEFAULT_CAP_RATE } from './lib/portfolio'
@@ -86,10 +86,11 @@ export default function App() {
   const taxState = useStored<TaxEntries>(STORE_KEYS.taxes, {})
   const profileState = useStored<TenantProfiles>(STORE_KEYS.profiles, {})
   const paymentState = useStored<Payment[]>(STORE_KEYS.payments, SEEDED_PAYMENTS)
-  const collectionState = useStored<CollectionSettings>(
-    STORE_KEYS.collection,
-    { ...DEFAULT_COLLECTION, paymentSeedVersion: PAYMENT_SEED_VERSION },
-  )
+  // Deliberately NOT pre-stamped with the payment seed version. Doing that told
+  // an instance whose collection settings had never been saved that the seed had
+  // already run, so a saved-but-empty payment list never received it and a month
+  // that was short read as settled.
+  const collectionState = useStored<CollectionSettings>(STORE_KEYS.collection, DEFAULT_COLLECTION)
   const assetState = useStored<AssetRegister>(
     STORE_KEYS.assets,
     applySeed(EMPTY_REGISTER, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION),
@@ -117,12 +118,13 @@ export default function App() {
   const collectionValue = collectionState.value
   const paymentsValue = paymentState.value
   useEffect(() => {
+    // Both must have loaded: acting on a default while the other is still in
+    // flight is what stamped the seed as done before it had run.
     if (!collectionLoaded || !paymentsLoaded) return
-    if ((collectionValue.paymentSeedVersion ?? 0) >= PAYMENT_SEED_VERSION) return
-    const have = new Set(paymentsValue.map((p) => p.id))
-    const missing = SEEDED_PAYMENTS.filter((p) => !have.has(p.id))
-    if (missing.length > 0) paymentSetValue([...paymentsValue, ...missing])
-    collectionSetValue({ ...collectionValue, paymentSeedVersion: PAYMENT_SEED_VERSION })
+    const next = seedPayments(paymentsValue, collectionValue, SEEDED_PAYMENTS, PAYMENT_SEED_VERSION)
+    if (!next) return
+    if (next.payments !== paymentsValue) paymentSetValue(next.payments)
+    collectionSetValue(next.settings)
   }, [collectionLoaded, paymentsLoaded, collectionValue, paymentsValue,
     collectionSetValue, paymentSetValue])
 

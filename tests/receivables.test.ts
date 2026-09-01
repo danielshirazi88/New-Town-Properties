@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_COLLECTION, GRACE_THROUGH_DAY, LATE_FEE_PER_DAY, agingOf, chargesForLease,
-  payerRecordsFor, periodOf, statusOf, trackedCharges, type Payment, type RentCharge,
+  payerRecordsFor, periodOf, seedPayments, statusOf, trackedCharges,
+  type CollectionSettings, type Payment, type RentCharge,
 } from '../src/lib/receivables'
 import type { Lease } from '../src/lib/types'
 import { PAYMENT_SEED_VERSION, SEEDED_PAYMENTS } from '../src/data/payments'
@@ -466,5 +467,78 @@ describe("the one tenant in arrears", () => {
     expect(sept.length).toBeGreaterThan(30)
     expect(sept.every((s) => s.state === 'due')).toBe(true)
     expect(sept.every((s) => s.lateFee === 0)).toBe(true)
+  })
+})
+
+/**
+ * Seeding documented payments into a stored ledger.
+ *
+ * The version marker lives in the collection settings and the payments live in
+ * their own array, so there are two stored documents and four combinations of
+ * "already saved" between them. An earlier version pre-stamped the version onto
+ * the default settings, which told an instance whose settings had never been
+ * saved that the seed was done — so a saved-but-empty payment list never
+ * received it, and Gotti's short August read as settled. These are the four.
+ */
+describe('seeding payments into a ledger', () => {
+  const seeded: Payment[] = [
+    { id: 's1', leaseId: 'l1', period: '2026-08', amount: 3850, paidOn: '2026-08-30', recordedAt: '' },
+  ]
+  const settings = (o: Partial<CollectionSettings> = {}): CollectionSettings =>
+    ({ settledThrough: '2026-08', ...o })
+  const run = (payments: Payment[], s: CollectionSettings) => seedPayments(payments, s, seeded, 1)
+
+  it('seeds a ledger that has never been saved', () => {
+    const out = run([], settings())!
+    expect(out.payments.map((p) => p.id)).toEqual(['s1'])
+    expect(out.settings.paymentSeedVersion).toBe(1)
+  })
+
+  it('seeds a saved-but-empty ledger whose settings were never saved', () => {
+    // The case that was broken: no version anywhere, and an empty array on file.
+    const out = run([], settings())!
+    expect(out.payments).toHaveLength(1)
+  })
+
+  it('seeds a ledger that already holds unrelated payments', () => {
+    const mine: Payment[] = [
+      { id: 'own', leaseId: 'l9', period: '2026-07', amount: 100, paidOn: '2026-07-02', recordedAt: '' },
+    ]
+    const out = run(mine, settings())!
+    expect(out.payments.map((p) => p.id)).toEqual(['own', 's1'])
+  })
+
+  it('does nothing once the ledger is at the version', () => {
+    // A payment deleted on purpose must stay deleted.
+    expect(run([], settings({ paymentSeedVersion: 1 }))).toBeNull()
+    expect(run([], settings({ paymentSeedVersion: 2 }))).toBeNull()
+  })
+
+  it('never restates a payment already on file', () => {
+    // An amount someone corrected by hand survives the merge.
+    const edited: Payment[] = [{ ...seeded[0], amount: 4000 }]
+    const out = run(edited, settings())!
+    expect(out.payments).toHaveLength(1)
+    expect(out.payments[0].amount).toBe(4000)
+  })
+
+  it('returns the same array when there is nothing to add, so no write happens', () => {
+    const same = [seeded[0]]
+    const out = run(same, settings())!
+    expect(out.payments).toBe(same)
+    expect(out.settings.paymentSeedVersion).toBe(1)
+  })
+
+  it('keeps every other collection setting intact', () => {
+    const out = run([], settings({ settledNote: 'a note', settledDeclaredOn: '2026-08-31' }))!
+    expect(out.settings.settledThrough).toBe('2026-08')
+    expect(out.settings.settledNote).toBe('a note')
+    expect(out.settings.settledDeclaredOn).toBe('2026-08-31')
+  })
+
+  it('leaves the shipped default unstamped, so the seed can still run', () => {
+    // The bug in one line: a default carrying the version is a default that
+    // claims the work is done before it has been.
+    expect(DEFAULT_COLLECTION.paymentSeedVersion).toBeUndefined()
   })
 })

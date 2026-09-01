@@ -411,6 +411,36 @@ export interface CollectionSettings {
   paymentSeedVersion?: number
 }
 
+/**
+ * Merge payments that ship with the application into the stored ledger.
+ *
+ * The version marker lives in the collection settings because the payments are
+ * a plain array with nowhere to keep it — which means two stored documents with
+ * four combinations of "saved" between them, and getting that wrong is how a
+ * month that was short reads as settled. The rules:
+ *
+ *  - Behind the version, or never stamped: merge in anything missing by id.
+ *  - Already at the version: do nothing, so a payment deleted on purpose stays
+ *    deleted rather than reappearing on the next load.
+ *  - A payment already present is never restated — an edited amount survives.
+ *
+ * Returns null when there is nothing to do, so the caller can skip the write.
+ */
+export function seedPayments(
+  payments: Payment[],
+  settings: CollectionSettings,
+  seeded: Payment[],
+  version: number,
+): { payments: Payment[]; settings: CollectionSettings } | null {
+  if ((settings.paymentSeedVersion ?? 0) >= version) return null
+  const have = new Set(payments.map((p) => p.id))
+  const missing = seeded.filter((p) => !have.has(p.id))
+  return {
+    payments: missing.length > 0 ? [...payments, ...missing] : payments,
+    settings: { ...settings, paymentSeedVersion: version },
+  }
+}
+
 export const inTrackingWindow = (charge: RentCharge, start?: string): boolean =>
   !start || charge.period >= start
 
