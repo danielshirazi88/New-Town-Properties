@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Card, ConcessionBadge, Empty, ExpiryBadge, Kpi } from '../components/ui'
 import { MONTHS, collected, concessionSummary, lastRate, rentPerSqFt, tenancyYears } from '../lib/finance'
 import { dateLabel, money, pct } from '../lib/format'
-import { PAYMENT_METHODS, methodLabel, profileCompleteness, resolveProfile,
+import { PAYMENT_METHODS, methodLabel, profileCompleteness, relatedLeases, resolveProfile,
   type PaymentMethodId, type TenantProfile as Profile, type TenantProfiles } from '../lib/tenants'
 import { MONTH_NAMES, chargesForLease, payerRecordsFor, statusOf,
   type ChargeState, type CollectionSettings, type Payment } from '../lib/receivables'
@@ -22,7 +22,7 @@ const STATE_STYLE: Record<ChargeState, { cls: string; label: string }> = {
 const styleFor = (s: ChargeState) => STATE_STYLE[s] ?? { cls: 'mute', label: s }
 
 export function TenantProfileView({
-  k, lease, profiles, setProfiles, payments, settings, onBack, onProperty,
+  k, lease, profiles, setProfiles, payments, settings, onBack, onProperty, onTenant,
 }: {
   k: PortfolioKpis
   lease: Lease
@@ -32,6 +32,7 @@ export function TenantProfileView({
   settings: CollectionSettings
   onBack: () => void
   onProperty: (id: string) => void
+  onTenant: (leaseId: string) => void
 }) {
   const property = k.properties.find((p) => p.property.id === lease.propertyId)
   const resolved = resolveProfile(lease.id, lease.contacts, profiles)
@@ -56,6 +57,15 @@ export function TenantProfileView({
   const years = tenancyYears(lease)
   const psf = rentPerSqFt(lease)
   const concession = concessionSummary(lease)
+
+  // The same tenant can hold more than one unit, and the sheets name them
+  // differently in each — matched on a shared telephone number.
+  const alsoHolds = useMemo(
+    () => relatedLeases(lease, k.properties.flatMap((p) => p.leases)),
+    [lease, k.properties],
+  )
+  const propName = (id: string) =>
+    k.properties.find((p) => p.property.id === id)?.property.name ?? id
 
   const save = () => {
     const clean: Profile = {
@@ -100,6 +110,32 @@ export function TenantProfileView({
         <Kpi label="Deposit held" value={lease.securityDeposit ? money(lease.securityDeposit) : '—'}
           note={lease.renewalOptions ? `Options: ${lease.renewalOptions}` : undefined} />
       </div>
+
+      {alsoHolds.length > 0 && (
+        <div className="callout neutral" style={{ marginTop: 12 }}>
+          <div className="callout-title">
+            Also leases {alsoHolds.length === 1 ? 'another unit' : `${alsoHolds.length} other units`}
+          </div>
+          <p>
+            The same telephone number appears on {alsoHolds.length === 1 ? 'one other lease' : 'these leases'}.
+            {' '}A lease ending here does not mean the tenant has left the portfolio.
+          </p>
+          <div className="stack" style={{ marginTop: 8, gap: 6 }}>
+            {alsoHolds.map((l) => (
+              <div key={l.id} className="row" style={{ gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                <button className="link" onClick={() => onTenant(l.id)}>
+                  {propName(l.propertyId)} · {l.unit}
+                </button>
+                <span className="t-mute" style={{ fontSize: 12 }}>{l.tenant}</span>
+                <span className="t-mono t-mute" style={{ fontSize: 12 }}>
+                  {money(lastRate(l))}/mo
+                </span>
+                <ExpiryBadge lease={l} asOf={k.asOf} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {concession && (
         <div className="callout neutral" style={{ marginTop: 12 }}>

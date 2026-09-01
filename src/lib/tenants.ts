@@ -78,6 +78,41 @@ export const hasProfile = (leaseId: string, profiles: TenantProfiles): boolean =
   Boolean(profiles[leaseId])
 
 /** How complete a profile is, so gaps are visible rather than assumed filled. */
+/* ── One tenant, more than one unit ──────────────────────────────────────── */
+
+/** Digits only, so "708-681-0844" and "(708) 681 0844" are the same line. */
+const digits = (s: string): string => s.replace(/\D/g, '')
+
+/**
+ * The other leases held by the same tenant.
+ *
+ * Matched on a shared telephone number rather than on the name in the tenant
+ * column, which is written differently from sheet to sheet — "Jean Pedroza" at
+ * 1643 N 43rd and "Jean Pedroza — Shop" at 1638A are one man with two units.
+ *
+ * This matters most where a lease ends. A tenant whose lease at one address has
+ * lapsed has not necessarily left: read on its own, the row says a tenant is
+ * gone, when in fact he is still in another building on a lease with years to
+ * run. Losing a unit and losing a tenant are different events and want
+ * different phone calls.
+ */
+export function relatedLeases<T extends {
+  id: string
+  tenant: string
+  contacts: { phone: string }[]
+}>(lease: T, all: T[]): T[] {
+  const mine = new Set(lease.contacts.map((c) => digits(c.phone)).filter((d) => d.length >= 10))
+  const name = lease.tenant.trim().toLowerCase()
+  return all.filter((l) => {
+    if (l.id === lease.id) return false
+    if (l.contacts.some((c) => mine.has(digits(c.phone)))) return true
+    // A name match still counts, but only an exact one: two rows reading
+    // "Vacant" or "Apartment" are not one tenant with two units.
+    const other = l.tenant.trim().toLowerCase()
+    return other === name && mine.size > 0
+  })
+}
+
 export function profileCompleteness(p: TenantProfile): { filled: number; total: number; missing: string[] } {
   const checks: [string, boolean][] = [
     ['Email', Boolean(p.email?.trim())],

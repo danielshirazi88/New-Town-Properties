@@ -6,6 +6,7 @@ import { cellAmount, collected, concessionLoss, concessionSummary, firstRate, gr
 import { computeKpis, resolveData, valuationModel } from '../src/lib/portfolio'
 import { AVAILABLE_YEARS, CURRENT_YEAR, LATEST_YEAR, isPartYear, rentRoll, unitKey, yearLabel } from '../src/data/rentRolls'
 import { RETURN_2023, RETURN_2024 } from '../src/data/taxReturns'
+import { relatedLeases } from '../src/lib/tenants'
 import { appraisalsByProperty, impliedCapRate } from '../src/lib/trust'
 import { TRUST_HOLDINGS } from '../src/data/trust'
 
@@ -989,5 +990,68 @@ describe('asking rents on empty space', () => {
     const let_ = p1.leases.find((l) => l.unit === '1A&B')!
     expect(let_.askingRent).toBeUndefined()
     expect(isOnTheMarket(let_)).toBe(false)
+  })
+})
+
+/**
+ * One tenant, more than one unit.
+ *
+ * The sheets name the same person differently in each building, so the tenant
+ * column cannot be trusted to join them. A shared telephone number can.
+ */
+describe('a tenant who holds more than one lease', () => {
+  const k = computeKpis(new Date('2026-09-01T12:00:00'), resolveData(undefined, 2026))
+  const all = k.properties.flatMap((p) => p.leases)
+  const lease = (id: string) => all.find((l) => l.id === id)!
+  const related = (id: string) => relatedLeases(lease(id), all)
+
+  it('connects Jean Pedroza’s house to his shop', () => {
+    // The house lease ended 31 March 2025 and the unit is empty. The shop runs
+    // to 31 July 2027 at $5,552 a month — he has not left the portfolio.
+    const house = lease('n43-pedroza')
+    const shop = lease('m1638-pedroza-shop')
+    expect(house.leaseEnd).toBe('2025-03-31')
+    expect(shop.leaseEnd).toBe('2027-07-31')
+    expect(related('n43-pedroza').map((l) => l.id)).toEqual(['m1638-pedroza-shop'])
+    expect(related('m1638-pedroza-shop').map((l) => l.id)).toEqual(['n43-pedroza'])
+    // Different names on the two sheets, which is why the join is on the phone.
+    expect(house.tenant).not.toBe(shop.tenant)
+  })
+
+  it('finds the tenant holding three units', () => {
+    const gustavo = related('m1638-jc-body-shop').map((l) => l.unit).sort()
+    expect(gustavo).toEqual(['1643 N 43rd Garage', '1646 A&B'])
+  })
+
+  it('is symmetric — if A holds B, B holds A', () => {
+    for (const l of all) {
+      for (const r of relatedLeases(l, all)) {
+        expect(relatedLeases(r, all).map((x) => x.id), `${l.id} ↔ ${r.id}`).toContain(l.id)
+      }
+    }
+  })
+
+  it('never matches a lease to itself', () => {
+    for (const l of all) expect(relatedLeases(l, all).map((x) => x.id)).not.toContain(l.id)
+  })
+
+  it('does not join two empty units by their shared blankness', () => {
+    // The vacant rows at Plaza #1 have no contacts and near-identical labels.
+    // Matching them would invent a tenant who holds four units and pays nothing.
+    for (const id of ['p1-apartment', 'p1-rw-warehouse', 'p1-r1', 'p1-r2']) {
+      expect(related(id), id).toEqual([])
+    }
+  })
+
+  it('ignores a number too short to be a telephone line', () => {
+    const a = { id: 'a', tenant: 'A', contacts: [{ phone: '123' }] }
+    const b = { id: 'b', tenant: 'B', contacts: [{ phone: '123' }] }
+    expect(relatedLeases(a, [a, b])).toEqual([])
+  })
+
+  it('reads the same number however it is punctuated', () => {
+    const a = { id: 'a', tenant: 'A', contacts: [{ phone: '708-681-0844' }] }
+    const b = { id: 'b', tenant: 'B', contacts: [{ phone: '(708) 681 0844' }] }
+    expect(relatedLeases(a, [a, b]).map((l) => l.id)).toEqual(['b'])
   })
 })

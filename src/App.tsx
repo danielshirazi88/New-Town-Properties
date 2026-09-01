@@ -412,6 +412,7 @@ export default function App() {
               settings={collectionState.value}
               onBack={() => setTab(tenantFrom)}
               onProperty={goProperty}
+              onTenant={goTenant}
             />
           ) : (
             <div className="callout">

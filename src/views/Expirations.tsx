@@ -5,6 +5,7 @@ import { collected, monthsRemaining } from '../lib/finance'
 import { dateLabel, money, num, pct } from '../lib/format'
 import type { PortfolioKpis } from '../lib/portfolio'
 import type { Lease } from '../lib/types'
+import { relatedLeases } from '../lib/tenants'
 
 type Filter =
   | 'all' | 'expired' | 'vacated' | 'rolling' | 'critical' | 'soon' | 'watch' | 'safe'
@@ -29,6 +30,14 @@ export function Expirations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
 
   const propName = (id: string) => k.properties.find((p) => p.property.id === id)?.property.name ?? id
   const holdoverRent = k.holdoverLeases.reduce((a, l) => a + collected(l), 0)
+
+  // Only worth saying where the lease in front of you has run out: everywhere
+  // else it is noise on a row nobody needs to act on.
+  const allLeases = useMemo(() => k.properties.flatMap((p) => p.leases), [k.properties])
+  const elsewhere = (l: Lease) => {
+    const s = expiryInfo(l, k.asOf).status
+    return s === 'expired' || s === 'vacated' ? relatedLeases(l, allLeases) : []
+  }
 
   const rows = useMemo(() => {
     const all = k.properties.flatMap((p) => p.leases)
@@ -139,7 +148,17 @@ export function Expirations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
                 {rows.map(({ lease, rent }) => (
                   <tr key={lease.id} className="clickable" onClick={() => onProperty(lease.propertyId)}>
                     <td><ExpiryBadge lease={lease} asOf={k.asOf} /></td>
-                    <td className="t-strong">{lease.tenant}</td>
+                    <td className="t-strong">
+                      {lease.tenant}
+                      {/* Losing a unit and losing a tenant are different events.
+                          A lapsed row on its own reads as a departure. */}
+                      {elsewhere(lease).length > 0 && (
+                        <div className="t-mute" style={{ fontSize: 11.5, fontWeight: 400 }}>
+                          Also leases {elsewhere(lease)
+                            .map((l) => `${propName(l.propertyId)} ${l.unit}`).join(', ')}
+                        </div>
+                      )}
+                    </td>
                     <td className="t-mute">{propName(lease.propertyId)}</td>
                     <td className="t-mono t-mute">{lease.unit}</td>
                     <td className="t-mono t-mute t-nowrap">{dateLabel(lease.leaseStart)}</td>
