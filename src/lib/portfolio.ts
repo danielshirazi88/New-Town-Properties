@@ -211,7 +211,9 @@ export function resolveData(
   const withArea = roll.leases.map((l) => {
     const area = l.squareFeet ? undefined : areaForUnit(l.propertyId, l.unit)
     const kind = l.incomeType ? undefined : incomeTypeForUnit(l.propertyId, l.unit)
-    const conveyedOn = soldOn.get(l.propertyId)
+    // The seller note sits under the sold building's id but did not convey with
+    // it — it is what the landlord received *for* conveying, and it still pays.
+    const conveyedOn = l.incomeType === 'note' ? undefined : soldOn.get(l.propertyId)
     if (!area && !kind && !conveyedOn) return l
     return {
       ...l,

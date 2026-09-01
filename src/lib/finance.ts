@@ -156,8 +156,20 @@ export function realisedEscalationPct(l: Lease): number | undefined {
   return ((b - a) / a) * 100
 }
 
-/** Monthly rent as at December — the rate the portfolio carries into next year. */
-export const exitRate = (l: Lease): number => lastRate(l)
+/**
+ * The rent this lease will actually produce next month.
+ *
+ * Read off the last month the sheet reports, rather than the last month that
+ * happened to bill. Those differ exactly where it matters: a unit that emptied
+ * in May still has an April figure behind it, and carrying that forward invents
+ * rent from a tenant who has gone. A lease that went with a sold building
+ * produces nothing at all.
+ */
+export const exitRate = (l: Lease): number => {
+  if (isConveyed(l)) return 0
+  const i = lastReportedIndex(l)
+  return i < 0 ? 0 : cellAmount(l.months[i])
+}
 
 /** December rate × 12: the forward-looking run rate, versus what 2025 actually billed. */
 export const runRate = (l: Lease): number => exitRate(l) * 12

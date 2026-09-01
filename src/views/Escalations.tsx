@@ -6,6 +6,21 @@ import type { PortfolioKpis } from '../lib/portfolio'
 
 export function Escalations({ k, onProperty }: { k: PortfolioKpis; onProperty: (id: string) => void }) {
   const all = k.properties.flatMap((p) => p.leases)
+
+  const MONTH = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December']
+  /** The last month the sheet covers — December on a full year. */
+  const lastMonth = MONTH[Math.max(0, k.reportedMonths - 1)]
+
+  // A building sold mid-year drags the portfolio's January-to-date figure down
+  // by its whole rent, which has nothing to do with escalations. Split it out
+  // rather than let the headline read as rents falling.
+  const sold = k.properties.filter((p) => p.property.soldYear === k.fiscalYear)
+  const held = k.properties.filter((p) => p.property.soldYear !== k.fiscalYear)
+  const soldJanuaryRent = sold.reduce((a, p) => a + p.monthly[0], 0)
+  const heldJan = held.reduce((a, p) => a + p.monthly[0], 0)
+  const heldLast = held.reduce((a, p) => a + (p.monthly[k.reportedMonths - 1] ?? 0), 0)
+  const heldGrowth = heldJan > 0 ? ((heldLast - heldJan) / heldJan) * 100 : 0
   const propName = (id: string) => k.properties.find((p) => p.property.id === id)?.property.name ?? id
 
   const withEsc = all
@@ -36,6 +51,22 @@ export function Escalations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
         </p>
       </div>
 
+      {sold.length > 0 && k.janToDecGrowthPct < 0 && (
+        <div className="callout neutral">
+          <div className="callout-title">
+            The fall from January is a disposal, not rents coming down
+          </div>
+          <p>
+            {sold.map((p) => p.property.name).join(' and ')} left the portfolio during {k.fiscalYear},
+            taking {money(soldJanuaryRent)} a month of rent with{' '}
+            {sold.length === 1 ? 'it' : 'them'}. Across the buildings still held, January's{' '}
+            {money(heldJan)} became {money(heldLast)} by {lastMonth} —{' '}
+            <strong>{signedPct(heldGrowth, 2)}</strong>, which is what the escalations on this page
+            actually did.
+          </p>
+        </div>
+      )}
+
       <div className="kpi-grid">
         <Kpi accent label="Average contracted bump" value={pct(k.avgStatedEscalationPct, 2)}
           note={`Across ${num(all.filter((l) => l.statedEscalationPct !== undefined).length)} leases`} />
@@ -44,9 +75,9 @@ export function Escalations({ k, onProperty }: { k: PortfolioKpis; onProperty: (
         <Kpi label="Bumps not taken" value={num(k.bumpsNotTaken.length)} warn
           note={`${money(k.totalForgoneFromMissedBumps)} forgone in ${k.fiscalYear}`} />
         <Kpi label="Next year's uplift" value={money(nextYearUplift)}
-          note="If every stated escalation is applied to December's rate" />
-        <Kpi label="Rent rise, Jan → Dec" value={signedPct(k.janToDecGrowthPct, 2)}
-          note={`${money(k.exitMonthlyRent)} monthly at year end`} />
+          note={`If every stated escalation is applied to ${lastMonth}'s rate`} />
+        <Kpi label={`Rent rise, Jan → ${lastMonth}`} value={signedPct(k.janToDecGrowthPct, 2)}
+          note={`${money(k.exitMonthlyRent)} monthly as at ${lastMonth}`} />
         <Kpi label="Escalation rates in use" value={[...statedCounts.keys()].sort((a, b) => a - b).map((r) => `${r}%`).join(' · ') || '—'}
           small note={[...statedCounts.entries()].sort((a, b) => a[0] - b[0]).map(([r, c]) => `${c} at ${r}%`).join(', ')} />
       </div>

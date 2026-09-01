@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { LEASES } from '../src/data/leases'
 import { PROPERTIES } from '../src/data/properties'
 import { APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../src/data/apollo'
-import { cellAmount, collected, concessionLoss, concessionSummary, firstRate, grossPotential, hasVacated, imputedRate, isConveyed, isDark, isExpired, isHoldover, isMonthToMonth, isOnTheMarket, lastRate, payingLately, realisedEscalationPct, rentPerSqFt, vacancyLoss, valueAtCap, walt } from '../src/lib/finance'
+import { cellAmount, collected, concessionLoss, concessionSummary, firstRate, grossPotential, exitRate, hasVacated, imputedRate, isConveyed, isDark, isExpired, isHoldover, isMonthToMonth, isOnTheMarket, lastRate, payingLately, realisedEscalationPct, rentPerSqFt, vacancyLoss, valueAtCap, walt } from '../src/lib/finance'
 import { computeKpis, resolveData, valuationModel } from '../src/lib/portfolio'
 import { AVAILABLE_YEARS, CURRENT_YEAR, LATEST_YEAR, isPartYear, rentRoll, unitKey, yearLabel } from '../src/data/rentRolls'
 import { RETURN_2023, RETURN_2024 } from '../src/data/taxReturns'
@@ -1056,5 +1056,64 @@ describe('a tenant who holds more than one lease', () => {
     const a = { id: 'a', tenant: 'A', contacts: [{ phone: '708-681-0844' }] }
     const b = { id: 'b', tenant: 'B', contacts: [{ phone: '(708) 681 0844' }] }
     expect(relatedLeases(a, [a, b]).map((l) => l.id)).toEqual(['b'])
+  })
+})
+
+/**
+ * What the portfolio carries into next month.
+ *
+ * The old reading walked backwards to the last month that happened to bill,
+ * which on the 2026 sheet meant April rent from a building sold on 30 April and
+ * from a house the tenant left in May — $38,229 a month of income nobody was
+ * going to pay, and a forward run rate overstated by nearly half a million.
+ */
+describe('the rate carried forward', () => {
+  const k = computeKpis(new Date('2026-09-01T12:00:00'), resolveData(undefined, 2026))
+  const all = k.properties.flatMap((p) => p.leases)
+  const lease = (id: string) => all.find((l) => l.id === id)!
+
+  it('matches what the last reported month actually billed', () => {
+    const august = k.monthly[k.reportedMonths - 1]
+    expect(k.exitMonthlyRent).toBeCloseTo(august, 2)
+    expect(Math.round(august)).toBe(193_083)
+  })
+
+  it('carries nothing forward from a building that was sold', () => {
+    for (const unit of ['1901', '1905', '1925']) {
+      const l = all.find((x) => x.propertyId === 'west-plaza' && x.unit === unit)!
+      expect(collected(l), unit).toBeGreaterThan(0)
+      expect(exitRate(l), unit).toBe(0)
+    }
+  })
+
+  it('keeps carrying the seller note, which did not convey', () => {
+    // The note is what the landlord received *for* the building. Sweeping it up
+    // with the tenancies would delete real income.
+    const note = all.find((l) => l.incomeType === 'note')!
+    expect(note.propertyId).toBe('west-plaza')
+    expect(isConveyed(note)).toBe(false)
+    expect(exitRate(note)).toBeCloseTo(6_140.87, 2)
+  })
+
+  it('carries nothing forward from a unit the tenant has left', () => {
+    // 1643 N 43rd billed $2,200 to April and reads V since.
+    const gone = lease('n43-pedroza')
+    expect(collected(gone)).toBe(8_800)
+    expect(exitRate(gone)).toBe(0)
+  })
+
+  it('still carries a lease that is paying', () => {
+    expect(exitRate(lease('mp-gottis'))).toBe(7_700)
+    expect(exitRate(lease('p1-purpura'))).toBe(3_822)
+  })
+
+  it('separates the disposal from what the rents did', () => {
+    // The headline is down 12.66% from January. Every point of that is the sale.
+    expect(k.janToDecGrowthPct).toBeCloseTo(-12.66, 2)
+    const held = k.properties.filter((p) => p.property.soldYear !== 2026)
+    const jan = held.reduce((a, p) => a + p.monthly[0], 0)
+    const last = held.reduce((a, p) => a + p.monthly[k.reportedMonths - 1], 0)
+    // On the buildings still owned, rent rose.
+    expect(((last - jan) / jan) * 100).toBeCloseTo(0.81, 2)
   })
 })
