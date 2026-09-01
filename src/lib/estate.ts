@@ -95,6 +95,16 @@ export function estateIncome(
   }
 }
 
+/**
+ * The estate carries no mortgage or other debt.
+ *
+ * Recorded as a confirmed fact rather than left as an absence, because those
+ * read the same on a screen and mean opposite things: "nothing entered yet"
+ * invites a reader to wonder what is missing, and every net figure here would
+ * be wrong if something were. Confirmed by the owner on 1 September 2026.
+ */
+export const DEBT_FREE_CONFIRMED_ON = '2026-09-01'
+
 export interface EstateValue {
   /** Buildings that pay rent. */
   rentalRealEstate: number
@@ -159,6 +169,18 @@ export function estateValue(holdings: ResolvedHolding[], register: AssetRegister
     unvalued,
   }
 }
+
+/**
+ * The asset classes, in a fixed order.
+ *
+ * Slices are drawn largest first, which changes as the figures do — so the hue
+ * is taken from this list rather than from the row's position. A reader who
+ * learned that deposits are orange should not have to learn it again when a
+ * certificate matures and the order shifts.
+ */
+export const VALUE_CLASSES = [
+  'rental', 'deposits', 'personal', 'resale', 'notes', 'vehicles',
+] as const
 
 /** What each part contributes, largest first, for a breakdown chart. */
 export const valueSlices = (v: EstateValue): { id: string; label: string; value: number }[] =>

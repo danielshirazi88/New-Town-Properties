@@ -6,6 +6,7 @@ import { Expirations } from './views/Expirations'
 import { Escalations } from './views/Escalations'
 import { Expenses } from './views/Expenses'
 import { Valuation } from './views/Valuation'
+import { CashFlowView } from './views/CashFlow'
 import { Apollo } from './views/Apollo'
 import { DataIntegrity } from './views/DataIntegrity'
 import { computeKpis, resolveData } from './lib/portfolio'
@@ -44,6 +45,7 @@ import { FILED_RETURNS } from './data/taxReturns'
 type Tab =
   | 'dashboard' | 'properties' | 'rentroll' | 'expirations'
   | 'escalations' | 'expenses' | 'taxes' | 'valuation' | 'apollo' | 'integrity' | 'yoy' | 'sqft'
+  | 'cashflow'
   | 'accounting' | 'receivables' | 'slowpayers' | 'tenant' | 'assets' | 'returns' | 'trust' | 'team'
 
 /** Which section governs each tab, for the redirect below. */
@@ -241,6 +243,7 @@ export default function App() {
     { id: 'returns', label: 'Tax returns', count: String(FILED_RETURNS.length), group: 'Money', section: 'taxes' },
     { id: 'trust', label: 'Shirazi Trust', count: String(TRUST_HOLDINGS.length), group: 'Money', section: 'wealth' },
     { id: 'assets', label: 'Assets', count: assetCount ? String(assetCount) : undefined, group: 'Money', section: 'wealth' },
+    { id: 'cashflow', label: 'Cash flow', group: 'Money', section: 'wealth' },
     { id: 'valuation', label: 'Valuation', group: 'Money', section: 'wealth' },
     { id: 'integrity', label: 'Data integrity', group: 'Money', section: 'properties' },
     { id: 'team', label: 'People & access', group: 'Money', section: 'team' },
@@ -371,6 +374,9 @@ export default function App() {
         )}
         {tab === 'taxes' && (
           <Taxes k={k} expenses={expenses} entries={taxState.value} setEntries={taxState.setValue} />
+        )}
+        {tab === 'cashflow' && (
+          <CashFlowView k={k} register={assetState.value} onNav={(t) => setTab(t as Tab)} />
         )}
         {tab === 'valuation' && <Valuation k={k} expenses={expenses} onProperty={goProperty} />}
         {tab === 'apollo' && <Apollo k={k} tenants={data.apolloTenants} />}

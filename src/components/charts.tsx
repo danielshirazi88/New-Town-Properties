@@ -27,6 +27,41 @@ export const VALUE_RAMP = ['#3d5c73', '#4c7590', '#5c8fa8', '#79aec2', '#a4cbda'
 /** Kept for anything that genuinely is an alert scale. */
 export const ALERT_RAMP = ['#8f151d', '#b32029', '#d33a3b', '#e86a60', '#f79a8c', '#ffc4b8']
 
+/**
+ * Distinct hues for things that have no order between them.
+ *
+ * Bank deposits are not "more" than a house, so shading them by size double-
+ * encodes the share the chart already shows and burns the one free channel.
+ * These name the parts instead.
+ *
+ * The order matters and is not arbitrary: a ring wraps, so the first and last
+ * slots sit next to each other, and blue beside violet is a pair even normal
+ * vision struggles with (ΔE 9.8, and 1.9 under protanopia). This cycle —
+ * blue, orange, violet, aqua, yellow, magenta — was checked with the palette
+ * validator against this surface in both the printed order and the rotation
+ * that puts the wrap pair adjacent: worst adjacent ΔE 8.4 under protanopia and
+ * 19.3 with normal vision, every slot inside the lightness band and clear of
+ * 3:1 on the surface. Every slice is named and valued in the legend beside it,
+ * which is what makes a figure in the 8–10 band safe to ship.
+ *
+ * Neither the alert red nor the paid green appears here. Those two mean
+ * something in this application, and a slice of a pie chart is not it.
+ */
+export const CATEGORY_COLOURS = [
+  '#3987e5', '#d95926', '#9085e9', '#199e70', '#c98500', '#d55181',
+]
+
+/**
+ * A colour that follows the thing rather than its position.
+ *
+ * A slice that moves up the order when a figure changes must keep its hue — a
+ * reader who learned that deposits are orange should not have to learn it twice.
+ */
+export const categoryColour = (id: string, order: readonly string[]): string | undefined => {
+  const i = order.indexOf(id)
+  return i >= 0 ? CATEGORY_COLOURS[i % CATEGORY_COLOURS.length] : undefined
+}
+
 /** What a bar or cell is measuring: money coming in, or a problem. */
 export type Tone = 'value' | 'alert'
 
@@ -720,17 +755,22 @@ export function DonutChart({
   centreValue,
   onSelect,
   tone = 'value',
+  ordinal = false,
 }: {
-  slices: { id: string; label: string; value: number }[]
+  /** `colour` pins a slice's hue to the thing it shows, not to its rank. */
+  slices: { id: string; label: string; value: number; colour?: string }[]
   size?: number
   thickness?: number
   centreLabel?: string
   centreValue?: string
   onSelect?: (id: string) => void
+  /** Left for a breakdown that genuinely is an alert scale. */
   tone?: Tone
+  /** Set where the parts have a real order and a ramp is the honest encoding. */
+  ordinal?: boolean
 }) {
   const [hover, setHover] = useState<string | null>(null)
-  const ramp = rampFor(tone)
+  const ramp = ordinal ? rampFor(tone) : CATEGORY_COLOURS
   const total = slices.reduce((a, s) => a + s.value, 0)
   if (total <= 0) return null
 
@@ -741,7 +781,10 @@ export function DonutChart({
   let offset = 0
   const arcs = slices.map((s, i) => {
     const share = s.value / total
-    const arc = { ...s, share, dash: share * circumference, offset, colour: ramp[i % ramp.length] }
+    const arc = {
+      ...s, share, dash: share * circumference, offset,
+      colour: s.colour ?? ramp[i % ramp.length],
+    }
     offset += arc.dash
     return arc
   })

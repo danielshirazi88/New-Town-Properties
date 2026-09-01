@@ -10,10 +10,10 @@ import {
   MONTH_NAMES, chargesForYear, statusOf, trackedCharges,
   type CollectionSettings, type Payment,
 } from '../lib/receivables'
-import { estateIncome, estateValue, valueSlices } from '../lib/estate'
+import { DEBT_FREE_CONFIRMED_ON, VALUE_CLASSES, estateIncome, estateValue, valueSlices } from '../lib/estate'
 import { blendedRate, maturities, type AssetRegister } from '../lib/assets'
 import type { ResolvedHolding } from '../lib/trust'
-import { DonutChart } from '../components/charts'
+import { DonutChart, categoryColour } from '../components/charts'
 
 export function Dashboard({
   k, expenses, payments, collection, register, holdings, opexLoadPct, onProperty, onNav,
@@ -37,7 +37,10 @@ export function Dashboard({
     k.grossCollected, k.totalTaxes, register, opexLoadPct, k.reportedMonths,
   )
   const worth = estateValue(holdings, register)
+  // Hue follows the class, not the row: a slice that moves up the order when a
+  // certificate matures keeps the colour the reader already learned.
   const slices = valueSlices(worth)
+    .map((s) => ({ ...s, colour: categoryColour(s.id, VALUE_CLASSES) }))
   const blended = blendedRate(register)
   const due = maturities(register, k.asOf)
   const matured = due.filter((m) => m.matured)
@@ -122,13 +125,17 @@ export function Dashboard({
           <Kpi label="From investments" value={money(income.investmentIncome)}
             note={`${pct((income.investmentIncome / income.totalNet) * 100)} of the total · ${money(income.investmentIncome / 12)} a month`} />
           <Kpi label="What the estate is worth" value={moneyShort(worth.net)}
-            note={`${money(worth.gross)} of assets${worth.debt > 0 ? `, less ${money(worth.debt)} of debt` : ', no debt recorded'}`} />
+            note={worth.debt > 0
+              ? `${money(worth.gross)} of assets, less ${money(worth.debt)} of debt`
+              : `${money(worth.gross)} of assets, owned outright`} />
           <Kpi label="Yield on the whole estate" value={pct((income.totalNet / worth.net) * 100, 2)}
             note="Net income against what it is all worth" />
         </div>
         <p className="t-mute" style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.6 }}>
-          Income before income tax, before any debt service and before anything personal — what the
-          assets throw off, not what reaches a current account. Rent is net of property tax and a{' '}
+          Income before income tax and before anything personal — what the assets throw off, not
+          what reaches a current account. There is no debt service to take off: the estate carries
+          no mortgages, confirmed {new Date(`${DEBT_FREE_CONFIRMED_ON}T00:00:00`).toLocaleDateString('en-US',
+            { month: 'long', day: 'numeric', year: 'numeric' })}. Rent is net of property tax and a{' '}
           {pct(opexLoadPct)} operating allowance for the costs the rent roll never captured;
           interest is at the rates on the certificates.{' '}
           <button className="link" onClick={() => onNav('valuation')}>Change the allowance</button>.
