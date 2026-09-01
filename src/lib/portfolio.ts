@@ -428,14 +428,34 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
 }
 
 /** True NOI after an assumed operating-expense load, and the value it implies. */
-export function valuationModel(k: PortfolioKpis, capRatePct: number, opexLoadPct: number) {
-  const opex = k.grossCollected * (opexLoadPct / 100)
-  const trueNoi = k.grossCollected - k.totalTaxes - opex
+/**
+ * What the portfolio is worth on its income, at a chosen cap rate.
+ *
+ * `monthsReported` matters more than it looks. A cap rate is a rate per year, so
+ * capitalising eight months of rent against a full year's tax bill prices every
+ * building at a fraction of what it is worth. Income is scaled to a full year
+ * before anything is divided by a rate; the tax bill is already annual and is
+ * left alone. Pass 12, or omit it, for a complete year.
+ */
+export function valuationModel(
+  k: PortfolioKpis, capRatePct: number, opexLoadPct: number, monthsReported = 12,
+) {
+  const months = monthsReported > 0 && monthsReported < 12 ? monthsReported : 12
+  const annualise = (n: number) => (n / months) * 12
+
+  const gross = annualise(k.grossCollected)
+  const opex = gross * (opexLoadPct / 100)
+  const trueNoi = gross - k.totalTaxes - opex
+  const sheetNet = annualise(k.grossCollected) - k.totalTaxes
   return {
+    /** Gross scaled to a full year — equal to the sheet's own figure at 12 months. */
+    annualGross: gross,
+    annualised: months < 12,
+    monthsReported: months,
     opex,
     trueNoi,
-    noiMarginPct: (trueNoi / k.grossCollected) * 100,
-    valueOnSheetNet: valueAtCap(k.netAfterTax, capRatePct),
+    noiMarginPct: gross > 0 ? (trueNoi / gross) * 100 : 0,
+    valueOnSheetNet: valueAtCap(sheetNet, capRatePct),
     valueOnTrueNoi: valueAtCap(trueNoi, capRatePct),
     valuePerProperty: valueAtCap(trueNoi, capRatePct) / k.propertyCount,
   }

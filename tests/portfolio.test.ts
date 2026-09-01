@@ -6,6 +6,8 @@ import { cellAmount, collected, concessionLoss, concessionSummary, firstRate, gr
 import { computeKpis, resolveData, valuationModel } from '../src/lib/portfolio'
 import { AVAILABLE_YEARS, CURRENT_YEAR, LATEST_YEAR, isPartYear, rentRoll, unitKey, yearLabel } from '../src/data/rentRolls'
 import { RETURN_2023, RETURN_2024 } from '../src/data/taxReturns'
+import { appraisalsByProperty, impliedCapRate } from '../src/lib/trust'
+import { TRUST_HOLDINGS } from '../src/data/trust'
 
 /**
  * These lock the transcription to the printed workbook. If a lease line is ever
@@ -777,5 +779,66 @@ describe('the Body Shop concession', () => {
         if (c) expect(c.monthsThisYear, `${year} ${l.id}`).toBeGreaterThan(0)
       }
     }
+  })
+})
+
+/**
+ * A cap rate is a rate per year. The 2026 sheet holds eight months of income and
+ * the full year's tax bill, so reading an implied rate off it without scaling
+ * prices every building as though it earned two-thirds of what it does.
+ */
+describe('appraisals against a part year', () => {
+  it('annualises the income before implying a rate from a price', () => {
+    const k = computeKpis(undefined, resolveData(undefined, 2026))
+    const months = rentRoll(2026).monthsReported
+    expect(months).toBeLessThan(12)
+
+    const p = k.properties.find((x) => x.property.id === 'mannheim-1500')!
+    const price = 1_380_000
+    const raw = impliedCapRate(p.collected - p.taxBill, price)!
+    const annual = impliedCapRate(((p.collected / months) * 12) - p.taxBill, price)!
+
+    // The unscaled reading is materially lower — the trap this guards against.
+    expect(annual).toBeGreaterThan(raw)
+    expect(annual / raw).toBeGreaterThan(1.4)
+  })
+
+  it('leaves a full year alone', () => {
+    const k = computeKpis(undefined, resolveData(undefined, 2025))
+    expect(rentRoll(2025).monthsReported).toBe(12)
+    const p = k.properties.find((x) => x.property.id === 'mannheim-1500')!
+    const noi = p.collected - p.taxBill
+    expect(impliedCapRate(noi, 1_380_000)).toBeCloseTo((noi / 1_380_000) * 100, 6)
+  })
+
+  it('scales the whole valuation model to a full year', () => {
+    const k = computeKpis(undefined, resolveData(undefined, 2026))
+    const months = rentRoll(2026).monthsReported
+    const part = valuationModel(k, 8, 12, months)
+    const naive = valuationModel(k, 8, 12, 12)
+
+    expect(part.annualised).toBe(true)
+    expect(part.monthsReported).toBe(months)
+    expect(part.annualGross).toBeCloseTo((k.grossCollected / months) * 12, 2)
+    // Taxes are already a full year's bills, so they are not scaled — which is
+    // why the NOI gap is wider than the income gap.
+    expect(part.trueNoi).toBeGreaterThan(naive.trueNoi)
+    expect(part.valueOnTrueNoi).toBeGreaterThan(naive.valueOnTrueNoi)
+  })
+
+  it('leaves a complete year exactly as it was', () => {
+    const k = computeKpis(undefined, resolveData(undefined, 2025))
+    const v = valuationModel(k, 8, 12, rentRoll(2025).monthsReported)
+    expect(v.annualised).toBe(false)
+    expect(v.annualGross).toBe(k.grossCollected)
+    expect(v.trueNoi).toBeCloseTo(k.grossCollected - k.totalTaxes - k.grossCollected * 0.12, 6)
+  })
+
+  it('has an appraisal for every property that earns, bar the one that sold', () => {
+    // A property missing from the map is a blank column on the valuation screen.
+    const m = appraisalsByProperty(TRUST_HOLDINGS)
+    const earning = computeKpis(undefined, resolveData(undefined, 2026)).properties.filter((p) => p.collected > 0)
+    const without = earning.filter((p) => !m.has(p.property.id)).map((p) => p.property.id)
+    expect(without).toEqual(['west-plaza'])
   })
 })

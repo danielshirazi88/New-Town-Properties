@@ -1,13 +1,27 @@
 import { useMemo, useState } from 'react'
 import { Card, Empty, Kpi } from '../components/ui'
 import { DonutChart, RankedBars } from '../components/charts'
-import { dateLabel, money, moneyExact, num, signedPct } from '../lib/format'
+import { dateLabel, money, moneyExact, moneyShort, num, signedPct } from '../lib/format'
 import {
-  USE_LABEL, annualisedGrowth, daysToBalloon, editCountFor, impliedNoteRate, newHoldingId,
-  resolveTrust, trustTotals, yearsHeld,
+  BASIS_LABEL, USE_LABEL, annualisedGrowth, daysToBalloon, editCountFor, impliedNoteRate,
+  newHoldingId, resolveTrust, trustTotals, yearsHeld,
   type HoldingUse, type ResolvedHolding, type TrustEdit, type TrustHolding, type TrustState,
 } from '../lib/trust'
-import { TRUST_HOLDINGS, TRUST_NAME, TRUST_SCHEDULE_DATE } from '../data/trust'
+import { APPRAISAL_DATE, TRUST_HOLDINGS, TRUST_NAME, TRUST_SCHEDULE_DATE } from '../data/trust'
+
+/** Why the value column says what it says, spelled out on hover. */
+const VALUE_SOURCE_HINT = (r: ResolvedHolding, capRate: number): string => {
+  switch (r.valueSource) {
+    case 'edit': return 'Entered by hand'
+    case 'appraisal': return [
+      `${BASIS_LABEL[r.appraisal!.basis]} ${dateLabel(r.appraisal!.asOf)}`,
+      r.appraisal!.note,
+    ].filter(Boolean).join(' — ')
+    case 'portfolio': return `Capitalised from this building's net income at ${capRate}%`
+    case 'note': return 'Principal outstanding on the buyer\'s note'
+    default: return 'No value recorded'
+  }
+}
 import type { PortfolioKpis } from '../lib/portfolio'
 
 const USES: HoldingUse[] = ['rental', 'personal', 'resale', 'note']
@@ -56,6 +70,15 @@ export function Trust({
   const shown = rows.filter((r) => useFilter === 'all' || r.use === useFilter)
   const flagged = rows.filter((r) => r.needsConfirmation)
 
+  // What the appraisals cover, and what the model would have said about the same
+  // rows — the comparison is the point of showing either figure.
+  const appraised = rows.filter((r) => r.valueSource === 'appraisal')
+  const appraisedTotal = appraised.reduce((a, r) => a + (r.estimatedValue ?? 0), 0)
+  const modelled = appraised.filter((r) => r.propertyId && portfolioValue(r.propertyId) !== undefined)
+  const modelledTotal = modelled.reduce((a, r) => a + (portfolioValue(r.propertyId!) ?? 0), 0)
+  // Rows where the owner's number sits above the recorded one, or carries a note.
+  const ranged = appraised.filter((r) => r.appraisal?.note)
+
   const saveEdit = (id: string, patch: TrustEdit) => {
     const next = { ...state.edits[id], ...patch, updatedAt: new Date().toISOString() }
     // Drop keys the user cleared, so an emptied field stops counting as an edit.
@@ -85,7 +108,7 @@ export function Trust({
       id: newHoldingId(), seq, purchaseDate: '', address: '', propertyType: '', use: 'rental',
     }
     setState({ ...state, added: [...state.added, fresh] })
-    setEditing({ ...fresh, valueFromPortfolio: false, editedFields: [], isAdded: true })
+    setEditing({ ...fresh, valueSource: 'none', valueFromPortfolio: false, editedFields: [], isAdded: true })
   }
 
   const notes = rows.filter((r) => r.sellerNote)
@@ -129,6 +152,28 @@ export function Trust({
             ? `${num(notes.length)} sold on seller financing`
             : 'None'} />
       </div>
+
+      {appraised.length > 0 && (
+        <div className="callout neutral">
+          <div className="callout-title">
+            {num(appraised.length)} of {num(rows.length)} holdings carry a current value from{' '}
+            {dateLabel(APPRAISAL_DATE)}
+          </div>
+          <p>
+            These are figures given from outside the app, so they stand ahead of the cap-rate model —
+            which only ever knew what a building's own net income would capitalise at. They come to{' '}
+            <strong>{money(appraisedTotal)}</strong>
+            {modelled.length > 0 && <> across those rows, against {money(modelledTotal)} the model
+              would have put on the same ones at {capRate}%</>}.
+            {' '}A figure typed in by hand still overrides an appraisal.
+          </p>
+          {ranged.map((r) => (
+            <p key={r.id} className="t-mute" style={{ marginTop: 6 }}>
+              <strong>{r.address}</strong> — {r.appraisal!.note}
+            </p>
+          ))}
+        </div>
+      )}
 
       {flagged.length > 0 && (
         <div className="callout">
@@ -311,11 +356,21 @@ export function Trust({
                     </td>
                     <td className="num">
                       {r.estimatedValue === undefined ? <span className="t-mute">not valued</span> : (
-                        <span title={r.valueFromPortfolio
-                          ? `Capitalised from this building's net income at ${capRate}%`
-                          : 'Entered by hand'}>
-                          {money(r.estimatedValue)}{r.valueFromPortfolio ? '*' : ''}
-                        </span>
+                        <>
+                          <span title={VALUE_SOURCE_HINT(r, capRate)}>
+                            {money(r.estimatedValue)}{r.valueSource === 'portfolio' ? '*' : ''}
+                          </span>
+                          {r.valueSource === 'appraisal' && r.appraisal && (
+                            <div className="t-mute" style={{ fontSize: 11 }}>
+                              {BASIS_LABEL[r.appraisal.basis].toLowerCase()}
+                              {r.appraisal.high !== undefined
+                                && ` · owner ${moneyShort(r.appraisal.value)}–${moneyShort(r.appraisal.high)}`}
+                            </div>
+                          )}
+                          {r.valueSource === 'note' && (
+                            <div className="t-mute" style={{ fontSize: 11 }}>note balance</div>
+                          )}
+                        </>
                       )}
                     </td>
                     <td className="num">

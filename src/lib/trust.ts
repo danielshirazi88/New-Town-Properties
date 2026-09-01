@@ -28,11 +28,44 @@ export const USE_LABEL: Record<HoldingUse, string> = {
 export interface SellerNote {
   soldDate: string
   buyer?: string
+  /** What it sold for. */
+  soldPrice?: number
   /** Principal outstanding. */
   balance: number
   monthlyPayment?: number
   /** When the balloon falls due. */
   maturityDate?: string
+  note?: string
+}
+
+/** Where a current value came from. An appraisal is not a guess and not a model. */
+export type ValuationBasis = 'appraisal' | 'offer' | 'sale' | 'owner'
+
+export const BASIS_LABEL: Record<ValuationBasis, string> = {
+  appraisal: 'Appraised',
+  offer: 'Offers received',
+  sale: 'Sale price',
+  owner: "Owner's estimate",
+}
+
+/**
+ * A current value from outside the app.
+ *
+ * This outranks the cap-rate model, which only ever knew what a building's own
+ * net income would capitalise at. It does not outrank a hand edit: if someone
+ * types a figure over an appraisal they are saying they know something newer.
+ */
+export interface Appraisal {
+  value: number
+  /** When the figure was given, ISO date. */
+  asOf: string
+  basis: ValuationBasis
+  /**
+   * The top of a range, where the owner puts it above the figure recorded. The
+   * lower number stays the one that counts — a total built on the optimistic
+   * end of every range is not a number anyone should act on.
+   */
+  high?: number
   note?: string
 }
 
@@ -45,7 +78,11 @@ export interface TrustHolding {
   /** The description written on the schedule, kept verbatim. */
   propertyType: string
   purchasePrice?: number
+  /** Money put into the building after buying it, where it is known. */
+  capitalSpend?: number
   use: HoldingUse
+  /** What it is currently worth, where a figure has been given from outside. */
+  appraisal?: Appraisal
   /** Links to a portfolio building, where the rent roll has one. */
   propertyId?: string
   note?: string
@@ -88,10 +125,15 @@ export const EMPTY_TRUST_STATE: TrustState = { edits: {}, added: [], removed: []
 export const newHoldingId = (): string =>
   `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
 
+/** Where the value on a resolved holding actually came from. */
+export type ValueSource = 'edit' | 'appraisal' | 'portfolio' | 'note' | 'none'
+
 /** A holding with its edits applied and its value worked out. */
 export interface ResolvedHolding extends TrustHolding {
   estimatedValue?: number
   debt?: number
+  /** Which of the four possible sources the figure above came from. */
+  valueSource: ValueSource
   /** True when the value came from the portfolio rather than being typed. */
   valueFromPortfolio: boolean
   /** Which fields have been changed by hand. */
@@ -103,10 +145,19 @@ export interface ResolvedHolding extends TrustHolding {
 /**
  * Apply the edit layer, then work out what each holding is worth.
  *
- * A rental building's value comes from the portfolio — its own net income
- * capitalised — unless someone has typed a figure over it. A typed value always
- * wins: an owner who has had a building appraised knows more than a cap rate
- * does. Everything else has no value until someone enters one.
+ * Four sources, in this order of authority:
+ *
+ *  1. **A hand edit.** Someone typing a figure is saying they know something
+ *     newer than anything recorded, so it wins outright.
+ *  2. **An appraisal.** A figure from outside the app — an appraiser, an offer
+ *     on the table, a completed sale. It beats the model because it is what
+ *     someone was actually willing to say the building is worth.
+ *  3. **The portfolio model.** The building's own net income at the chosen cap
+ *     rate. A reasonable guess in the absence of anything better, and nothing
+ *     more than that.
+ *  4. **A seller note's balance**, for a building already sold on financing.
+ *
+ * Anything left has no value, and is counted as missing rather than as zero.
  */
 export function resolveTrust(
   holdings: TrustHolding[],
@@ -137,21 +188,68 @@ export function resolveTrust(
     // A property sold on seller financing is worth the balance outstanding.
     // Capitalising its old net income would value a building the trust no longer
     // owns, and would double-count against the note it was exchanged for.
-    const fromPortfolio = merged.sellerNote || !merged.propertyId
+    const sold = Boolean(merged.sellerNote)
+    const fromPortfolio = sold || !merged.propertyId
       ? undefined
       : portfolioValue(merged.propertyId)
-    const estimatedValue = e.estimatedValue ?? fromPortfolio ?? merged.sellerNote?.balance
+    // An appraisal of a building that has since been sold values something the
+    // trust no longer holds, so the note's balance stands instead.
+    const fromAppraisal = sold ? undefined : merged.appraisal?.value
+
+    const estimatedValue = e.estimatedValue
+      ?? fromAppraisal
+      ?? fromPortfolio
+      ?? merged.sellerNote?.balance
+
+    const valueSource: ValueSource = e.estimatedValue !== undefined ? 'edit'
+      : fromAppraisal !== undefined ? 'appraisal'
+        : fromPortfolio !== undefined ? 'portfolio'
+          : merged.sellerNote?.balance !== undefined ? 'note'
+            : 'none'
 
     return {
       ...merged,
       estimatedValue,
       debt: e.debt,
-      valueFromPortfolio: e.estimatedValue === undefined && fromPortfolio !== undefined,
+      valueSource,
+      valueFromPortfolio: valueSource === 'portfolio',
       editedFields,
       isAdded,
     }
   }).sort((a, b) => a.seq - b.seq)
 }
+
+/**
+ * Current values by portfolio property id.
+ *
+ * The appraisals are recorded against trust holdings, because that is the list
+ * of what is owned. The valuation screen works in portfolio properties, so this
+ * is the bridge. Holdings with no building behind them — the two residences, the
+ * condo held for resale — have no entry, which is correct: they earn nothing to
+ * capitalise and belong nowhere near a cap rate.
+ */
+export function appraisalsByProperty(
+  holdings: TrustHolding[],
+): Map<string, Appraisal> {
+  const m = new Map<string, Appraisal>()
+  for (const h of holdings) {
+    // A sold building's appraisal, if one existed, would value something the
+    // trust no longer holds.
+    if (h.propertyId && h.appraisal && !h.sellerNote) m.set(h.propertyId, h.appraisal)
+  }
+  return m
+}
+
+/**
+ * The cap rate a price implies, given the income.
+ *
+ * Read the other way round from the usual model: rather than choosing a rate and
+ * deriving a value, this takes the value someone actually put on the building
+ * and says what rate they must have used. A number well under the model's rate
+ * means the appraiser saw more in it than the rent roll alone shows.
+ */
+export const impliedCapRate = (noi: number, value: number): number | undefined =>
+  value > 0 && noi > 0 ? (noi / value) * 100 : undefined
 
 export const editCountFor = (state: TrustState): number =>
   Object.values(state.edits).reduce(

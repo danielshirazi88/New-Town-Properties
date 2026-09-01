@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  EMPTY_TRUST_STATE, annualisedGrowth, daysToBalloon, editCountFor, impliedNoteRate, resolveTrust,
-  trustTotals, yearsHeld, type TrustHolding, type TrustState,
+  EMPTY_TRUST_STATE, annualisedGrowth, appraisalsByProperty, daysToBalloon, editCountFor,
+  impliedCapRate, impliedNoteRate, resolveTrust, trustTotals, yearsHeld,
+  type TrustHolding, type TrustState,
 } from '../src/lib/trust'
-import { TRUST_HOLDINGS, TRUST_PURCHASE_TOTAL } from '../src/data/trust'
+import { APPRAISAL_DATE, TRUST_HOLDINGS, TRUST_PURCHASE_TOTAL } from '../src/data/trust'
 import { PROPERTIES } from '../src/data/properties'
 
 const asOf = new Date('2026-08-31T12:00:00')
@@ -22,7 +23,9 @@ describe('the transcribed schedule', () => {
   })
 
   it('adds up to the schedule total', () => {
-    expect(TRUST_PURCHASE_TOTAL).toBeCloseTo(11_705_584.65, 2)
+    // $600,000 below the figure first transcribed: 129 E Foster's $2,100,000 was
+    // the current value written in the price column, and the house cost $1.5m.
+    expect(TRUST_PURCHASE_TOTAL).toBeCloseTo(11_105_584.65, 2)
   })
 
   it('gives every row a price', () => {
@@ -57,10 +60,14 @@ describe('the transcribed schedule', () => {
     expect(TRUST_HOLDINGS.filter((h) => h.use === 'resale')).toHaveLength(1)
   })
 
-  it('flags the Roselle price rather than correcting it', () => {
+  it('settles the Roselle figure that was flagged for checking', () => {
+    // The $2,100,000 on the schedule was never a purchase price. Asked about it,
+    // the owner gave both figures: cost $1.5m, worth $2.1m now.
     const foster = TRUST_HOLDINGS.find((h) => h.address.startsWith('129 E Foster'))!
-    expect(foster.purchasePrice).toBe(2_100_000)
-    expect(foster.needsConfirmation).toBeTruthy()
+    expect(foster.purchasePrice).toBe(1_500_000)
+    expect(foster.appraisal?.value).toBe(2_100_000)
+    expect(foster.needsConfirmation).toBeUndefined()
+    expect(foster.note).toContain('$1,500,000')
   })
 })
 
@@ -225,5 +232,137 @@ describe('holding period and growth', () => {
   it('says nothing without both figures', () => {
     const [r] = resolveTrust([holding({ purchaseDate: '2010-01-01' })], EMPTY_TRUST_STATE)
     expect(annualisedGrowth(r, asOf)).toBeUndefined()
+  })
+})
+
+/**
+ * The current values, given by the owner on 1 September 2026.
+ *
+ * These are the figures anyone will actually quote off this screen, so they are
+ * checked one by one against what was said rather than only in total.
+ */
+describe('the appraised values', () => {
+  const by = (start: string) => TRUST_HOLDINGS.find((h) => h.address.startsWith(start))!
+
+  it('records the figure given for each address', () => {
+    const given: [string, number][] = [
+      ['1501-1505 N Mannheim', 4_000_000],
+      ['1511 N Mannheim', 1_400_000],
+      ['1638-46 N Mannheim', 2_500_000],
+      ['1506-10 N Mannheim', 1_320_000],
+      ['1500 N Mannheim', 1_380_000],
+      ['1559 N Mannheim', 3_950_000],
+      ['1401 N 25th Ave', 2_430_000],
+      ['4208 Apollo Ln', 4_000_000],
+      ['511 SE 5th Ave', 350_000],
+      ['1211 S Prairie', 900_000],
+      ['129 E Foster', 2_100_000],
+      ['1681-1693 N Mannheim', 4_000_000],
+      ['43 Ventada St', 2_500_000],
+      ['1536 N Mannheim', 1_000_000],
+      ['1538 N Mannheim', 500_000],
+      ['1643 N 43rd Ave', 350_000],
+      ['153 N Seabreeze', 2_400_000],
+    ]
+    for (const [address, value] of given) {
+      expect(by(address).appraisal?.value, address).toBe(value)
+    }
+    expect(given).toHaveLength(17)
+  })
+
+  it('values everything except the building that had already sold', () => {
+    const without = TRUST_HOLDINGS.filter((h) => !h.appraisal)
+    expect(without.map((h) => h.address)).toEqual(['1901-25 S Mannheim Rd, Westchester, IL'])
+    for (const h of TRUST_HOLDINGS) {
+      if (h.appraisal) expect(h.appraisal.asOf, h.address).toBe(APPRAISAL_DATE)
+    }
+  })
+
+  it('carries the offers on Apollo, not the owner’s hoped-for number', () => {
+    // He puts it at $4.5m–$5m; $4m is what buyers actually offered. A total built
+    // on the top of every range is not a number anyone should act on.
+    const apollo = by('4208 Apollo Ln').appraisal!
+    expect(apollo.value).toBe(4_000_000)
+    expect(apollo.high).toBe(5_000_000)
+    expect(apollo.basis).toBe('offer')
+  })
+
+  it('keeps the sold building at the note balance, not at what it fetched', () => {
+    const wp = by('1901-25 S Mannheim')
+    expect(wp.sellerNote?.soldPrice).toBe(3_100_000)
+    expect(wp.capitalSpend).toBe(250_000)
+    const [row] = resolveTrust([wp])
+    expect(row.estimatedValue).toBe(1_000_000)
+    expect(row.valueSource).toBe('note')
+  })
+
+  it('shows the West Plaza gain against everything put into it', () => {
+    const wp = by('1901-25 S Mannheim')
+    const cost = (wp.purchasePrice ?? 0) + (wp.capitalSpend ?? 0)
+    expect(cost).toBe(1_225_000)
+    expect((wp.sellerNote!.soldPrice ?? 0) - cost).toBe(1_875_000)
+  })
+})
+
+describe('where a value comes from', () => {
+  const model = () => 900_000
+
+  it('prefers an appraisal to the cap-rate model', () => {
+    const h = holding({ propertyId: 'p1', appraisal: { value: 1_400_000, asOf: '2026-09-01', basis: 'appraisal' } })
+    const [r] = resolveTrust([h], EMPTY_TRUST_STATE, model)
+    expect(r.estimatedValue).toBe(1_400_000)
+    expect(r.valueSource).toBe('appraisal')
+    expect(r.valueFromPortfolio).toBe(false)
+  })
+
+  it('prefers a typed figure to an appraisal', () => {
+    // Someone typing a number is saying they know something newer than the paper.
+    const h = holding({ id: 'h1', propertyId: 'p1', appraisal: { value: 1_400_000, asOf: '2026-09-01', basis: 'appraisal' } })
+    const [r] = resolveTrust([h], state({ edits: { h1: { estimatedValue: 1_650_000 } } }), model)
+    expect(r.estimatedValue).toBe(1_650_000)
+    expect(r.valueSource).toBe('edit')
+  })
+
+  it('falls back to the model where there is no appraisal', () => {
+    const [r] = resolveTrust([holding({ propertyId: 'p1' })], EMPTY_TRUST_STATE, model)
+    expect(r.estimatedValue).toBe(900_000)
+    expect(r.valueSource).toBe('portfolio')
+    expect(r.valueFromPortfolio).toBe(true)
+  })
+
+  it('says so plainly when nothing values a holding', () => {
+    const [r] = resolveTrust([holding({ purchasePrice: 100, propertyId: undefined })])
+    expect(r.estimatedValue).toBeUndefined()
+    expect(r.valueSource).toBe('none')
+  })
+})
+
+describe('the bridge to the portfolio', () => {
+  it('maps only holdings that have a building still owned', () => {
+    const m = appraisalsByProperty(TRUST_HOLDINGS)
+    expect(m.get('mannheim-plaza')?.value).toBe(4_000_000)
+    expect(m.get('apollo')?.value).toBe(4_000_000)
+    // Sold, so it values something the trust no longer holds.
+    expect(m.has('west-plaza')).toBe(false)
+    // Every id in the map is a real property.
+    for (const id of m.keys()) {
+      expect(PROPERTIES.some((p) => p.id === id), id).toBe(true)
+    }
+  })
+
+  it('leaves out what earns nothing to capitalise', () => {
+    const m = appraisalsByProperty(TRUST_HOLDINGS)
+    // The two residences and the condo held for resale have no portfolio id at
+    // all, so they cannot leak into a cap-rate table.
+    expect([...m.keys()]).not.toContain(undefined)
+    expect(m.size).toBe(TRUST_HOLDINGS.filter((h) => h.propertyId && h.appraisal && !h.sellerNote).length)
+  })
+
+  it('reads a cap rate back out of a price', () => {
+    expect(impliedCapRate(80_000, 1_000_000)).toBeCloseTo(8, 6)
+    // Nothing to divide by, and nothing to divide.
+    expect(impliedCapRate(80_000, 0)).toBeUndefined()
+    expect(impliedCapRate(0, 1_000_000)).toBeUndefined()
+    expect(impliedCapRate(-5_000, 1_000_000)).toBeUndefined()
   })
 })
