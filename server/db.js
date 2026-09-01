@@ -3,10 +3,11 @@ import pg from 'pg'
 /**
  * Postgres access.
  *
- * The whole application stores its state as JSON documents under well-known
- * keys, so there is exactly one table and adding a feature never needs a
- * migration. A second table keeps the previous version of every document, which
- * is what makes a bad edit recoverable rather than final.
+ * Application state is stored as JSON documents under well-known keys, so adding
+ * a feature never needs a migration. A second table keeps the previous version
+ * of every document, which is what makes a bad edit recoverable rather than
+ * final. Two more hold the accounts and the record of who signed in — those do
+ * have a shape, because a password hash is not a document.
  */
 
 const { Pool } = pg
@@ -49,6 +50,37 @@ export async function migrate() {
 
     create index if not exists app_state_history_key_idx
       on app_state_history (key, saved_at desc);
+
+    create table if not exists app_user (
+      id                   text primary key,
+      name                 text not null,
+      username             text not null unique,
+      role                 text not null default 'staff',
+      -- Sections a staff account may reach. An owner's is ignored; owners reach
+      -- everything, so that a section added later is never unreachable.
+      sections             jsonb not null default '[]'::jsonb,
+      password_hash        text not null,
+      password_salt        text not null,
+      must_change_password boolean not null default true,
+      active               boolean not null default true,
+      created_at           timestamptz not null default now(),
+      last_seen_at         timestamptz
+    );
+
+    -- Every attempt, not only the ones that worked: a run of failures is the
+    -- only warning this application will ever give.
+    create table if not exists sign_in_log (
+      id         bigserial primary key,
+      user_id    text,
+      username   text,
+      outcome    text not null,
+      at         timestamptz not null default now(),
+      ip         text,
+      user_agent text
+    );
+
+    create index if not exists sign_in_log_at_idx on sign_in_log (at desc);
+    create index if not exists sign_in_log_username_idx on sign_in_log (username, at desc);
   `
   await db().query(sql)
 }

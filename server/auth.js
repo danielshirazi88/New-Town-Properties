@@ -1,17 +1,16 @@
 import crypto from 'node:crypto'
+import { findById, rowToAccount, touchLastSeen } from './users.js'
 
 /**
- * A single shared passphrase, held in an environment variable and never in the
- * code or the page.
+ * Sessions.
  *
- * This is deliberately modest: the people using it are one family and a couple
- * of employees, and anything with per-user accounts would mean managing
- * accounts. What it does buy is that the portfolio — which carries tenants'
- * names, home addresses and phone numbers — is not readable by anyone who
- * happens on the URL.
+ * A signed cookie carries the account id and nothing else that matters. What the
+ * account is *allowed* to do is read from the database on every request rather
+ * than baked into the cookie, so revoking someone's access takes effect on their
+ * next click instead of whenever their cookie happens to expire.
  *
- * Set APP_PASSWORD to switch it on. With it unset the server runs open, which
- * is only appropriate on a local machine.
+ * Set APP_PASSWORD to switch authentication on. With it unset the server runs
+ * open, which is only appropriate on a local machine.
  */
 
 const COOKIE = 'ntp_session'
@@ -46,8 +45,8 @@ function verify(token) {
   }
 }
 
-export function issueCookie(res, name) {
-  const token = sign({ name, exp: Date.now() + MAX_AGE_DAYS * 864e5 })
+export function issueCookie(res, account) {
+  const token = sign({ uid: account.id, exp: Date.now() + MAX_AGE_DAYS * 864e5 })
   const parts = [
     `${COOKIE}=${token}`,
     'Path=/',
@@ -75,16 +74,69 @@ function readCookie(req) {
 
 export const sessionOf = (req) => verify(readCookie(req))
 
-/** Compare the submitted passphrase without leaking its length through timing. */
-export function passwordMatches(submitted) {
-  const expected = process.env.APP_PASSWORD ?? ''
-  const a = crypto.createHash('sha256').update(String(submitted ?? '')).digest()
-  const b = crypto.createHash('sha256').update(expected).digest()
-  return crypto.timingSafeEqual(a, b)
+/**
+ * The account behind a request, read fresh from the database.
+ *
+ * Deactivating someone therefore cuts them off immediately: their cookie still
+ * verifies, but the account it names is no longer usable.
+ */
+export async function accountOf(req) {
+  const session = sessionOf(req)
+  if (!session?.uid) return null
+  const row = await findById(session.uid)
+  if (!row || !row.active) return null
+  return rowToAccount(row)
 }
 
+/**
+ * An owner reaches everything. Kept identical to the browser's copy in
+ * `src/lib/access.ts` — the browser hides, this refuses.
+ */
+export const canReach = (account, section) => {
+  if (!account || !account.active) return false
+  if (account.role === 'owner') return true
+  return (account.sections ?? []).includes(section)
+}
+
+/** Attach the account to the request, or refuse it. */
 export function requireAuth(req, res, next) {
   if (!authRequired()) return next()
-  if (sessionOf(req)) return next()
-  res.status(401).json({ error: 'not_authenticated' })
+  accountOf(req)
+    .then((account) => {
+      if (!account) return res.status(401).json({ error: 'not_authenticated' })
+      req.account = account
+      // Fire and forget: a failed timestamp update must not fail the request.
+      touchLastSeen(account.id).catch(() => {})
+      next()
+    })
+    .catch(() => res.status(500).json({ error: 'auth_unavailable' }))
 }
+
+export function requireOwner(req, res, next) {
+  if (!authRequired()) return next()
+  if (req.account?.role === 'owner') return next()
+  res.status(403).json({ error: 'owner_only' })
+}
+
+/**
+ * Refuse a request for a document the account's sections do not cover.
+ *
+ * A key nobody has claimed is owner-only by default. Adding a store key without
+ * saying who it belongs to should fail closed, not quietly hand it to everyone.
+ */
+export const requireSection = (sectionForKey) => (req, res, next) => {
+  if (!authRequired()) return next()
+  const section = sectionForKey(req.params.key)
+  if (!section) {
+    return req.account?.role === 'owner'
+      ? next()
+      : res.status(403).json({ error: 'not_permitted' })
+  }
+  if (canReach(req.account, section)) return next()
+  res.status(403).json({ error: 'not_permitted', section })
+}
+
+/** The caller's address, honouring the proxy Railway puts in front. */
+export const addressOf = (req) =>
+  String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() ||
+  req.socket?.remoteAddress || ''

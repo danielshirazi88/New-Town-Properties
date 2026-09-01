@@ -410,3 +410,13 @@ button.link:hover { color: var(--ink); text-decoration-color: var(--red); }
 .donut-val { font-weight: 600; color: var(--ink); }
 .donut-share { color: var(--ink-3); width: 46px; text-align: right; }
 .field-hint { color: var(--ink-3); font-style: normal; font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* ── Access control ─────────────────────────────────────────────────────── */
+
+.access-row {
+  display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface-2); cursor: pointer;
+}
+.access-row:hover { border-color: var(--line-strong); }
+.access-row input { margin-top: 2px; flex: none; }

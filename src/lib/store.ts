@@ -1,3 +1,4 @@
+import type { AccountSummary } from './access'
 /**
  * Where the app keeps everything people type: edits to the rent roll, expenses,
  * and the tax worksheet.
@@ -148,10 +149,11 @@ export interface ServerInfo {
   present: boolean
   authRequired: boolean
   authenticated: boolean
-  name: string | null
+  /** Who is signed in, with the sections they may reach. */
+  account: AccountSummary | null
 }
 
-let serverInfo: ServerInfo = { present: false, authRequired: false, authenticated: false, name: null }
+let serverInfo: ServerInfo = { present: false, authRequired: false, authenticated: false, account: null }
 
 /**
  * Ask the server whether it is there before the app renders. If it answers, the
@@ -181,10 +183,15 @@ export async function initStore(): Promise<ServerInfo> {
  * Without that, the app signs in and then quietly keeps reading the browser's
  * own storage.
  */
-export function activateSharedStore(name: string | null): void {
+export function activateSharedStore(_name: string | null): void {
   adapter = new ApiAdapter()
-  serverInfo = { ...serverInfo, authenticated: true, name }
+  serverInfo = { ...serverInfo, authenticated: true }
   window.dispatchEvent(new CustomEvent('ntp:store-changed'))
+}
+
+/** Record who signed in, once the account comes back from the server. */
+export function setAccount(account: AccountSummary | null): void {
+  serverInfo = { ...serverInfo, account }
 }
 
 export const server = (): ServerInfo => serverInfo

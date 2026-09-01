@@ -15,8 +15,10 @@ import { Taxes } from './views/Taxes'
 import { EMPTY_OVERRIDES, editCount, type Overrides } from './lib/overrides'
 import { useStored } from './lib/useStored'
 import { useToday } from './lib/useToday'
-import { STORE_KEYS, server, store } from './lib/store'
+import { STORE_KEYS, server, setAccount, store } from './lib/store'
 import { SignIn } from './components/SignIn'
+import { Team } from './views/Team'
+import { canReach, type AccountSummary, type SectionId } from './lib/access'
 import type { TaxEntries } from './lib/taxes'
 import { YearOverYear } from './views/YearOverYear'
 import { SquareFootage } from './views/SquareFootage'
@@ -40,11 +42,32 @@ import { FILED_RETURNS } from './data/taxReturns'
 type Tab =
   | 'dashboard' | 'properties' | 'rentroll' | 'expirations'
   | 'escalations' | 'expenses' | 'taxes' | 'valuation' | 'apollo' | 'integrity' | 'yoy' | 'sqft'
-  | 'accounting' | 'receivables' | 'slowpayers' | 'tenant' | 'assets' | 'returns' | 'trust'
+  | 'accounting' | 'receivables' | 'slowpayers' | 'tenant' | 'assets' | 'returns' | 'trust' | 'team'
+
+/** Which section governs each tab, for the redirect below. */
+const TAB_SECTIONS: Partial<Record<Tab, SectionId>> = {
+  dashboard: 'dashboard', yoy: 'dashboard', sqft: 'dashboard',
+  properties: 'properties', rentroll: 'properties', expirations: 'properties',
+  escalations: 'properties', apollo: 'properties', integrity: 'properties',
+  tenant: 'tenants',
+  accounting: 'collection', receivables: 'collection', slowpayers: 'collection',
+  expenses: 'expenses',
+  taxes: 'taxes', returns: 'taxes',
+  trust: 'wealth', assets: 'wealth', valuation: 'wealth',
+  team: 'team',
+}
+
+/** The first tab this account can actually open. */
+const FIRST_TAB_FOR = (account: AccountSummary): Tab => {
+  const found = (Object.keys(TAB_SECTIONS) as Tab[])
+    .find((t) => canReach(account, TAB_SECTIONS[t]!))
+  return found ?? 'dashboard'
+}
 
 export default function App() {
   const info = server()
   const [signedIn, setSignedIn] = useState(!info.authRequired || info.authenticated)
+  const [me, setMe] = useState<AccountSummary | null>(info.account)
   const [tab, setTab] = useState<Tab>('dashboard')
   const [selectedProperty, setSelectedProperty] = useState<string | undefined>()
   const [expenseSeed, setExpenseSeed] = useState<string | undefined>()
@@ -112,6 +135,16 @@ export default function App() {
     window.scrollTo({ top: 0 })
   }, [tab, selectedProperty, selectedLease])
 
+  // If the selected tab is not reachable — access changed, or a bookmark from
+  // another account — fall back to the first one that is.
+  useEffect(() => {
+    if (!info.authRequired || !me) return
+    const section = TAB_SECTIONS[tab]
+    if (section && !canReach(me, section)) {
+      setTab(canReach(me, 'dashboard') ? 'dashboard' : FIRST_TAB_FOR(me))
+    }
+  }, [tab, me, info.authRequired])
+
   // The server rejects a request once the session lapses; show the gate again
   // rather than letting saves fail silently.
   useEffect(() => {
@@ -120,7 +153,16 @@ export default function App() {
     return () => window.removeEventListener('ntp:unauthenticated', onExpired)
   }, [])
 
-  if (!signedIn) return <SignIn onDone={() => setSignedIn(true)} />
+  if (!signedIn) {
+    return (
+      <SignIn onDone={(account) => { setAccount(account); setMe(account); setSignedIn(true) }} />
+    )
+  }
+
+  // With no server there is nobody to be — the app runs open on one browser, so
+  // everything is reachable. With a server, the section list decides.
+  const allowed = (section: SectionId) =>
+    !info.authRequired ? true : canReach(me, section)
 
   const goProperty = (id?: string) => {
     setSelectedProperty(id)
@@ -142,28 +184,32 @@ export default function App() {
   const assetCount = trustHoldings.length
     + assetState.value.investments.length + assetState.value.vehicles.length
 
-  const nav: { id: Tab; label: string; count?: string; group: string }[] = [
-    { id: 'dashboard', label: 'Executive dashboard', group: 'Overview' },
-    { id: 'yoy', label: 'Year over year', count: String(AVAILABLE_YEARS.length), group: 'Overview' },
-    { id: 'properties', label: 'Properties', count: String(k.propertyCount), group: 'Overview' },
-    { id: 'rentroll', label: 'Rent roll', count: String(k.unitCount + data.apolloTenants.filter((t) => !t.isParking).length), group: 'Tenants' },
-    { id: 'expirations', label: 'Lease expirations', count: String(k.expiredLeases.length + k.expiring12.length), group: 'Tenants' },
-    { id: 'escalations', label: 'Annual bumps', count: String(k.bumpsNotTaken.length), group: 'Tenants' },
-    { id: 'apollo', label: 'Apollo park', count: String(k.apolloLots), group: 'Tenants' },
-    { id: 'sqft', label: 'Square footage', count: k.totalSquareFeet ? `${Math.round(k.totalSquareFeet / 1000)}k` : undefined, group: 'Tenants' },
-    { id: 'accounting', label: 'Rent collection', count: paymentState.value.length ? String(paymentState.value.length) : undefined, group: 'Money' },
-    { id: 'receivables', label: 'Accounts receivable', count: openCount ? String(openCount) : undefined, group: 'Money' },
-    { id: 'slowpayers', label: 'Slow payers & late fees', count: slowCount ? String(slowCount) : undefined, group: 'Money' },
-    { id: 'expenses', label: 'Expenses', count: expenses.length ? String(expenses.length) : undefined, group: 'Money' },
-    { id: 'taxes', label: 'Taxes — Schedule E', group: 'Money' },
-    { id: 'returns', label: 'Tax returns', count: String(FILED_RETURNS.length), group: 'Money' },
-    { id: 'trust', label: 'Shirazi Trust', count: String(TRUST_HOLDINGS.length), group: 'Money' },
-    { id: 'assets', label: 'Assets', count: assetCount ? String(assetCount) : undefined, group: 'Money' },
-    { id: 'valuation', label: 'Valuation', group: 'Money' },
-    { id: 'integrity', label: 'Data integrity', group: 'Money' },
+  const nav: { id: Tab; label: string; count?: string; group: string; section: SectionId }[] = [
+    { id: 'dashboard', label: 'Executive dashboard', group: 'Overview', section: 'dashboard' },
+    { id: 'yoy', label: 'Year over year', count: String(AVAILABLE_YEARS.length), group: 'Overview', section: 'dashboard' },
+    { id: 'properties', label: 'Properties', count: String(k.propertyCount), group: 'Overview', section: 'properties' },
+    { id: 'rentroll', label: 'Rent roll', count: String(k.unitCount + data.apolloTenants.filter((t) => !t.isParking).length), group: 'Tenants', section: 'properties' },
+    { id: 'expirations', label: 'Lease expirations', count: String(k.expiredLeases.length + k.expiring12.length), group: 'Tenants', section: 'properties' },
+    { id: 'escalations', label: 'Annual bumps', count: String(k.bumpsNotTaken.length), group: 'Tenants', section: 'properties' },
+    { id: 'apollo', label: 'Apollo park', count: String(k.apolloLots), group: 'Tenants', section: 'properties' },
+    { id: 'sqft', label: 'Square footage', count: k.totalSquareFeet ? `${Math.round(k.totalSquareFeet / 1000)}k` : undefined, group: 'Tenants', section: 'dashboard' },
+    { id: 'accounting', label: 'Rent collection', count: paymentState.value.length ? String(paymentState.value.length) : undefined, group: 'Money', section: 'collection' },
+    { id: 'receivables', label: 'Accounts receivable', count: openCount ? String(openCount) : undefined, group: 'Money', section: 'collection' },
+    { id: 'slowpayers', label: 'Slow payers & late fees', count: slowCount ? String(slowCount) : undefined, group: 'Money', section: 'collection' },
+    { id: 'expenses', label: 'Expenses', count: expenses.length ? String(expenses.length) : undefined, group: 'Money', section: 'expenses' },
+    { id: 'taxes', label: 'Taxes — Schedule E', group: 'Money', section: 'taxes' },
+    { id: 'returns', label: 'Tax returns', count: String(FILED_RETURNS.length), group: 'Money', section: 'taxes' },
+    { id: 'trust', label: 'Shirazi Trust', count: String(TRUST_HOLDINGS.length), group: 'Money', section: 'wealth' },
+    { id: 'assets', label: 'Assets', count: assetCount ? String(assetCount) : undefined, group: 'Money', section: 'wealth' },
+    { id: 'valuation', label: 'Valuation', group: 'Money', section: 'wealth' },
+    { id: 'integrity', label: 'Data integrity', group: 'Money', section: 'properties' },
+    { id: 'team', label: 'People & access', group: 'Money', section: 'team' },
   ]
 
-  const groups = [...new Set(nav.map((n) => n.group))]
+  // Hide what this account cannot reach. The server refuses it as well — this
+  // is so nobody is shown a door they cannot open, not the lock itself.
+  const visible = nav.filter((n) => allowed(n.section))
+  const groups = [...new Set(visible.map((n) => n.group))]
 
 
   return (
@@ -188,6 +234,20 @@ export default function App() {
               {edits} manual {edits === 1 ? 'edit' : 'edits'} applied
             </div>
           )}
+          {me && (
+            <div className="brand-sub" style={{ marginTop: 8, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span className="t-strong">{me.name}</span>
+              <span style={{ opacity: 0.7 }}>{me.role === 'owner' ? 'owner' : 'staff'}</span>
+              <button
+                className="link"
+                style={{ marginLeft: 'auto', fontSize: 11 }}
+                onClick={async () => {
+                  await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' })
+                  window.location.reload()
+                }}
+              >Sign out</button>
+            </div>
+          )}
           {saving && <div className="brand-sub" style={{ marginTop: 3 }}>Saving…</div>}
           {saveError && <div className="brand-sub" style={{ color: 'var(--red)', marginTop: 3 }}>{saveError}</div>}
         </div>
@@ -195,7 +255,7 @@ export default function App() {
         {groups.map((g) => (
           <div className="nav-group" key={g}>
             <div className="nav-label">{g}</div>
-            {nav.filter((n) => n.group === g).map((n) => (
+            {visible.filter((n) => n.group === g).map((n) => (
               <button
                 key={n.id}
                 className={`nav-item${tab === n.id ? ' active' : ''}`}
@@ -274,6 +334,7 @@ export default function App() {
         {tab === 'yoy' && <YearOverYear overrides={overrides} onProperty={goProperty} />}
         {tab === 'sqft' && <SquareFootage k={k} onProperty={goProperty} />}
         {tab === 'returns' && <TaxReturns k={k} onProperty={goProperty} />}
+        {tab === 'team' && me && <Team me={me} />}
         {tab === 'trust' && (
           <Trust
             k={k}
