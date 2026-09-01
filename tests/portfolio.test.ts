@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { LEASES } from '../src/data/leases'
 import { PROPERTIES } from '../src/data/properties'
 import { APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../src/data/apollo'
-import { collected, grossPotential, realisedEscalationPct, rentPerSqFt, valueAtCap, walt } from '../src/lib/finance'
+import { cellAmount, collected, firstRate, grossPotential, isDark, lastRate, realisedEscalationPct, rentPerSqFt, valueAtCap, walt } from '../src/lib/finance'
 import { computeKpis, resolveData, valuationModel } from '../src/lib/portfolio'
-import { AVAILABLE_YEARS, CURRENT_YEAR, LATEST_YEAR, isPartYear, rentRoll, yearLabel } from '../src/data/rentRolls'
+import { AVAILABLE_YEARS, CURRENT_YEAR, LATEST_YEAR, isPartYear, rentRoll, unitKey, yearLabel } from '../src/data/rentRolls'
 import { RETURN_2023, RETURN_2024 } from '../src/data/taxReturns'
 
 /**
@@ -649,5 +649,67 @@ describe('a property reported as one annual figure', () => {
     // It used to show $0 for the year while the headline total included it.
     const k = computeKpis(new Date('2026-08-31T12:00:00'), resolveData(undefined, 2026))
     expect(k.properties.find((p) => p.property.id === 'apollo')!.collected).toBeGreaterThan(0)
+  })
+})
+
+describe('comparing one year against the next', () => {
+  // The same matching the Year over year screen does: by physical unit.
+  const rows = (from: number, to: number) => {
+    const key = (l: { propertyId: string; unit: string }) => unitKey(l.propertyId, l.unit)
+    const prior = new Map(rentRoll(from).leases.map((l) => [key(l), l]))
+    const now = new Map(rentRoll(to).leases.map((l) => [key(l), l]))
+    return [...new Set([...prior.keys(), ...now.keys()])].map((id) => {
+      const before = prior.get(id)
+      const after = now.get(id)
+      return {
+        id,
+        before,
+        after,
+        was: before ? collected(before) : 0,
+        now: after ? collected(after) : 0,
+      }
+    })
+  }
+
+  it('follows a bay that was renamed rather than reporting it as gone', () => {
+    // 1401 N 25th Ave names each bay after its occupant, so Autotech Garage
+    // became Mechanic. Matching on the lease id read that as a $69,225 collapse
+    // and a separate $41,225 arrival — one bay counted twice, in both directions.
+    const bay = rows(2024, 2025).find((r) => r.before?.unit === 'Autotech Garage')!
+    expect(bay.after?.unit).toBe('Mechanic')
+    expect(bay.was).toBe(69_225)
+    expect(bay.now).toBe(41_225)
+    expect(bay.now - bay.was).toBe(-28_000)
+  })
+
+  it('no longer shows any unit falling to nothing at that address', () => {
+    const gone = rows(2024, 2025).filter((r) => r.before && !r.after
+      && r.before.propertyId === 'ave-25-1401')
+    expect(gone).toEqual([])
+  })
+
+  it('does not call a vacancy ending a rent increase', () => {
+    // The Body Shop's rent was $6,075 a month in both years. It was empty for ten
+    // months of 2024, which is the whole of the $61,340 "gain".
+    const shop = rows(2024, 2025).find((r) => r.before?.unit === 'Body Shop')!
+    expect(shop.now - shop.was).toBe(61_340)
+    // firstRate reads the first month that billed, skipping the vacancy — so
+    // both years opened at the same rate and it never moved until November 2025.
+    expect(firstRate(shop.before!)).toBe(6_075)
+    expect(lastRate(shop.before!)).toBe(6_075)
+    expect(firstRate(shop.after!)).toBe(6_075)
+    expect(lastRate(shop.after!)).toBe(6_370)
+    const paidMonths = (l: typeof shop.before) =>
+      l!.months.filter((m) => !isDark(m) && cellAmount(m) > 0).length
+    expect(paidMonths(shop.before)).toBe(2)
+    expect(paidMonths(shop.after)).toBe(12)
+  })
+
+  it('keeps every unit matched on both sides where the sheets agree', () => {
+    // A year-on-year comparison that silently drops units is worse than none.
+    const all = rows(2024, 2025)
+    const unmatched = all.filter((r) => !r.before || !r.after)
+    // Only genuine arrivals and departures, not renames.
+    expect(unmatched.every((r) => r.before?.propertyId !== 'ave-25-1401')).toBe(true)
   })
 })

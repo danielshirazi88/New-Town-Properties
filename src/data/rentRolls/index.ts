@@ -185,7 +185,15 @@ const CANONICAL_UNIT: Map<string, string> = (() => {
   return m
 })()
 
-const unitKey = (propertyId: string, unit: string): string => {
+/**
+ * One physical unit, whatever the sheets have called it over the years.
+ *
+ * Anything comparing a unit across years has to key on this rather than on a
+ * lease id or a label: 1401 N 25th Ave names each bay after whoever occupies
+ * it, so a re-let reads as one unit vanishing and another appearing unless the
+ * aliases are followed.
+ */
+export const unitKey = (propertyId: string, unit: string): string => {
   const raw = `${propertyId}|${unit}`
   return CANONICAL_UNIT.get(raw) ?? raw
 }

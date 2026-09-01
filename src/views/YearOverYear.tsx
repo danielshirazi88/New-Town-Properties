@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react'
 import { Card, Empty, Kpi } from '../components/ui'
 import { RankedBars } from '../components/charts'
 import { money, moneyShort, num, pct, signedPct } from '../lib/format'
-import { collected, firstRate, lastRate } from '../lib/finance'
-import { AVAILABLE_YEARS, rentRoll } from '../data/rentRolls'
+import { cellAmount, collected, firstRate, isDark, lastRate } from '../lib/finance'
+import { AVAILABLE_YEARS, rentRoll, unitKey } from '../data/rentRolls'
 import { computeKpis, resolveData } from '../lib/portfolio'
 import type { Overrides } from '../lib/overrides'
 import type { Lease } from '../lib/types'
@@ -25,29 +25,62 @@ export function YearOverYear({
   const a = byYear[from]
   const b = byYear[to]
 
-  // Match units across years by lease id, which is stable per unit.
+  /**
+   * Match units across years by the physical unit, not by lease id or label.
+   *
+   * 1401 N 25th Ave names each bay after whoever is in it, so a re-let renames
+   * the row and gets a new id. Matching on either would read one bay changing
+   * hands as a unit vanishing and a different one appearing — which is exactly
+   * what it used to do, reporting Autotech Garage as a $69,225 collapse when the
+   * same bay took $41,225 the next year under a new name.
+   */
   const changes = useMemo(() => {
-    const prior = new Map(rentRoll(from).leases.map((l) => [l.id, l]))
-    const now = new Map(rentRoll(to).leases.map((l) => [l.id, l]))
+    const key = (l: Lease) => unitKey(l.propertyId, l.unit)
+    const prior = new Map(rentRoll(from).leases.map((l) => [key(l), l]))
+    const now = new Map(rentRoll(to).leases.map((l) => [key(l), l]))
     const ids = new Set([...prior.keys(), ...now.keys()])
+
+    // Months that actually billed, and the rate the unit was carrying. Annual
+    // totals alone cannot tell a rent rise from a vacancy ending.
+    const paidMonths = (l?: Lease) => l ? l.months.filter((m) => !isDark(m) && cellAmount(m) > 0).length : 0
+
     const rows: {
       id: string; unit: string; propertyId: string
       before?: Lease; after?: Lease
       wasRent: number; nowRent: number
+      wasMonths: number; nowMonths: number
+      wasRate: number; nowRate: number
       kind: 'same' | 'new-tenant' | 'left' | 'arrived'
+      /** What moved the annual figure: the rent, the occupancy, or both. */
+      driver: 'rate' | 'occupancy' | 'both' | 'none'
     }[] = []
+
     for (const id of ids) {
       const before = prior.get(id)
       const after = now.get(id)
       const wasRent = before ? collected(before) : 0
       const nowRent = after ? collected(after) : 0
+      const wasMonths = paidMonths(before)
+      const nowMonths = paidMonths(after)
+      // The exit rate: what the unit was billing on its way out of the year.
+      const wasRate = before ? lastRate(before) : 0
+      const nowRate = after ? lastRate(after) : 0
+
       let kind: 'same' | 'new-tenant' | 'left' | 'arrived' = 'same'
       if (before && !after) kind = 'left'
       else if (!before && after) kind = 'arrived'
       else if (before && after && before.tenant !== after.tenant) kind = 'new-tenant'
+
+      const rateMoved = wasRate > 0 && Math.abs(nowRate - wasRate) / wasRate > 0.02
+      const occupancyMoved = Math.abs(nowMonths - wasMonths) >= 2
+      const driver = rateMoved && occupancyMoved ? 'both'
+        : occupancyMoved ? 'occupancy'
+        : rateMoved ? 'rate'
+        : 'none'
+
       rows.push({
         id, unit: (after ?? before)!.unit, propertyId: (after ?? before)!.propertyId,
-        before, after, wasRent, nowRent, kind,
+        before, after, wasRent, nowRent, wasMonths, nowMonths, wasRate, nowRate, kind, driver,
       })
     }
     return rows.sort((x, y) => (y.nowRent - y.wasRent) - (x.nowRent - x.wasRent))
@@ -105,26 +138,10 @@ export function YearOverYear({
         <div className="section">
           <div className="grid-2">
             {biggestGain && biggestGain.nowRent > biggestGain.wasRent && (
-              <div className="callout neutral">
-                <div className="callout-title">Biggest gain — {biggestGain.after?.tenant}</div>
-                <p>
-                  {propName(biggestGain.propertyId)}, unit {biggestGain.unit}:{' '}
-                  {money(biggestGain.wasRent)} → {money(biggestGain.nowRent)}, up{' '}
-                  <strong>{money(biggestGain.nowRent - biggestGain.wasRent)}</strong>.
-                  {biggestGain.after?.notes && ` ${biggestGain.after.notes}`}
-                </p>
-              </div>
+              <MoveCallout row={biggestGain} label="Biggest gain" propName={propName} />
             )}
             {biggestDrop && biggestDrop.nowRent < biggestDrop.wasRent && (
-              <div className="callout">
-                <div className="callout-title">Biggest fall — {biggestDrop.before?.tenant}</div>
-                <p>
-                  {propName(biggestDrop.propertyId)}, unit {biggestDrop.unit}:{' '}
-                  {money(biggestDrop.wasRent)} → {money(biggestDrop.nowRent)}, down{' '}
-                  <strong>{money(biggestDrop.wasRent - biggestDrop.nowRent)}</strong>.
-                  {(biggestDrop.after ?? biggestDrop.before)?.notes && ` ${(biggestDrop.after ?? biggestDrop.before)!.notes}`}
-                </p>
-              </div>
+              <MoveCallout row={biggestDrop} label="Biggest fall" propName={propName} alert />
             )}
           </div>
         </div>
@@ -290,3 +307,66 @@ export function YearOverYear({
 
 /** Kept for callers that only need one year's exit rate. */
 export const exitRateOf = (l: Lease): number => lastRate(l) || firstRate(l)
+
+/**
+ * What moved, and why it moved.
+ *
+ * An annual total can swing for two quite different reasons, and calling both a
+ * "gain" misleads. A unit that sat empty for ten months and then filled up shows
+ * a large rise while its rent never changed a cent; a unit whose rent was cut
+ * shows a fall that has nothing to do with occupancy. This says which.
+ */
+function MoveCallout({
+  row, label, propName, alert = false,
+}: {
+  row: {
+    unit: string; propertyId: string
+    before?: Lease; after?: Lease
+    wasRent: number; nowRent: number
+    wasMonths: number; nowMonths: number
+    wasRate: number; nowRate: number
+    driver: 'rate' | 'occupancy' | 'both' | 'none'
+  }
+  label: string
+  propName: (id: string) => string
+  alert?: boolean
+}) {
+  const delta = row.nowRent - row.wasRent
+  const up = delta >= 0
+  const tenant = (up ? row.after : row.before)?.tenant ?? row.after?.tenant ?? row.before?.tenant
+  const renamed = row.before && row.after && row.before.unit !== row.after.unit
+  const notes = (row.after ?? row.before)?.notes
+
+  const rateLine = row.wasRate > 0 && row.nowRate > 0
+    ? `${money(row.wasRate)} → ${money(row.nowRate)} a month`
+    : row.nowRate > 0 ? `${money(row.nowRate)} a month` : 'nothing billed'
+
+  const why = {
+    occupancy: `The rent did not move — it was ${rateLine} throughout. What changed is how much of `
+      + `the year the unit billed for: ${row.wasMonths} months against ${row.nowMonths}.`,
+    rate: `Occupancy was much the same — ${row.wasMonths} months against ${row.nowMonths} — so this `
+      + `is the rent itself: ${rateLine}.`,
+    both: `Both moved: the rent went ${rateLine}, and the months billed went from ${row.wasMonths} `
+      + `to ${row.nowMonths}.`,
+    none: `Neither the rent nor the months billed moved much; the difference is in the shape of the `
+      + `year rather than in either.`,
+  }[row.driver]
+
+  return (
+    <div className={`callout${alert ? '' : ' neutral'}`}>
+      <div className="callout-title">{label} — {tenant}</div>
+      <p>
+        {propName(row.propertyId)}, unit {row.unit}: {money(row.wasRent)} → {money(row.nowRent)},{' '}
+        {up ? 'up' : 'down'} <strong>{money(Math.abs(delta))}</strong> across the year.
+      </p>
+      <p style={{ marginTop: 6 }}>{why}</p>
+      {renamed && (
+        <p style={{ marginTop: 6 }}>
+          The same bay, listed as “{row.before!.unit}” in the earlier year and “{row.after!.unit}”
+          in the later one — this row follows the unit, not the name on it.
+        </p>
+      )}
+      {notes && <p className="t-mute" style={{ marginTop: 6, fontSize: 12 }}>{notes}</p>}
+    </div>
+  )
+}
