@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Card, Empty, Kpi } from '../components/ui'
-import { DonutChart, RankedBars } from '../components/charts'
+import { DonutChart, MaturityLadder, RankedBars, RateBandBars } from '../components/charts'
 import { dateLabel, money, num, pct } from '../lib/format'
 import {
   INTEREST_FREQUENCIES, INVESTMENT_KINDS, annualInterest, assetBreakdown, assetTotals,
-  blendedRate, byInstitution, frequencyLabel, investmentKindLabel, maturities, newAssetId,
+  blendedRate, byInstitution, byRate, frequencyLabel, investmentKindLabel, maturities,
+  maturitySchedule, newAssetId,
   realEstateTotals, registerInterest, vehicleValued,
   type AssetRegister, type InvestmentAsset, type InvestmentKind, type InterestFrequency,
   type VehicleAsset,
@@ -350,8 +351,15 @@ function Investments({
 
   const total = rows.reduce((a, i) => a + i.balance, 0)
   const income = rows.reduce((a, i) => a + annualInterest(i), 0)
-  const due = new Map(maturities({ realEstate: [], investments: rows, vehicles: [] }, asOf)
-    .map((m) => [m.investment.id, m]))
+  const register: AssetRegister = { investments: rows, vehicles: [] }
+  const due = new Map(maturities(register, asOf).map((m) => [m.investment.id, m]))
+
+  const schedule = maturitySchedule(register, asOf)
+  const dueSoon = schedule.filter((b) => b.soon).reduce((a, b) => a + b.balance, 0)
+  const bands = byRate(register)
+  const rateless = rows.filter((i) => i.ratePct === undefined).length
+  const banks = byInstitution(register)
+  const topShare = total > 0 && banks.length > 0 ? (banks[0].balance / total) * 100 : 0
 
   return (
     <>
@@ -426,6 +434,56 @@ function Investments({
               </tr>
             </tfoot>
           </table>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <Card
+            title="When the money comes free"
+            hint={dueSoon > 0
+              ? `${money(dueSoon)} inside 90 days`
+              : 'nothing due in the next 90 days'}
+          >
+            <MaturityLadder buckets={schedule} />
+          </Card>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="grid-2" style={{ marginTop: 14 }}>
+          <Card
+            title="What each rate is holding"
+            hint={rateless > 0
+              ? `${num(rateless)} ${rateless === 1 ? 'account states' : 'accounts state'} no rate and `
+                + 'sits outside this'
+              : `${money(income)} a year across the lot`}
+          >
+            <RateBandBars bands={bands} />
+          </Card>
+          {banks.length > 1 && (
+        <Card
+          title="Where it is held"
+          hint={`${num(banks.length)} institutions · largest holds ${pct(topShare, 0)}`}
+        >
+          <RankedBars
+            items={banks.map((b) => ({
+              id: b.institution,
+              label: b.institution,
+              value: b.balance,
+              sub: `${num(b.accounts)} ${b.accounts === 1 ? 'account' : 'accounts'}`
+                + (b.rate !== undefined ? ` · ${pct(b.rate, 2)}` : ''),
+            }))}
+          />
+          {topShare >= 75 && (
+            <p className="t-mute" style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.55 }}>
+              {pct(topShare, 0)} of the deposits sit with {banks[0].institution}. Federal deposit
+              insurance covers $250,000 per depositor per bank, so most of this balance is uninsured —
+              which may well be a considered choice, but it should be a visible one.
+            </p>
+          )}
+        </Card>
+          )}
         </div>
       )}
 

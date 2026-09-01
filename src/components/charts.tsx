@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { MONTHS } from '../lib/finance'
 import { money, moneyShort } from '../lib/format'
+import { Empty } from './ui'
 
 /**
  * Two ramps, because colour here carries meaning rather than decoration.
@@ -464,6 +465,239 @@ export function LadderChart({
         <span className="legend-item"><span className="legend-swatch" style={{ background: '#ff5a5f' }} />Already lapsed — on holdover</span>
         <span className="legend-item"><span className="legend-swatch" style={{ background: '#b32029' }} />Still running</span>
       </div>
+    </div>
+  )
+}
+
+/* ══ Maturity ladder — when deposits come free ════════════════════════════ */
+
+/**
+ * Money coming due, month by month.
+ *
+ * Two fills, and they are a status distinction rather than a scale: a month
+ * inside the decision window is picked out, everything beyond it recedes. The
+ * bar height already says how much, so shading by size as well would spend the
+ * one free channel restating what the reader can see.
+ *
+ * Only months holding something are drawn. Padding the empty months would
+ * scatter a handful of real bars across a year of whitespace and hide the
+ * clustering, which is the thing worth seeing.
+ */
+export function MaturityLadder({
+  buckets,
+  height = 210,
+  soonLabel = 'Within 90 days',
+}: {
+  buckets: { key: string; label: string; balance: number; count: number; soon: boolean }[]
+  height?: number
+  soonLabel?: string
+}) {
+  const [tip, setTip] = useState<Tip | null>(null)
+  const W = 1000
+  const padL = 58
+  const padR = 14
+  const padT = 22
+  const padB = 42
+  const innerW = W - padL - padR
+  const innerH = height - padT - padB
+  const max = Math.max(...buckets.map((b) => b.balance), 1)
+  const bw = innerW / Math.max(buckets.length, 1)
+  const anySoon = buckets.some((b) => b.soon)
+  // Label only the months worth calling out, so the axis and the tooltip carry
+  // the rest rather than a number sitting over every bar.
+  const biggest = buckets.reduce((a, b) => (b.balance > a ? b.balance : a), 0)
+
+  if (buckets.length === 0) return <Empty>Nothing with a maturity date.</Empty>
+
+  return (
+    <div className="chart-shell" onMouseLeave={() => setTip(null)}>
+      <svg
+        className="chart-svg"
+        viewBox={`0 0 ${W} ${height}`}
+        role="img"
+        aria-label="Deposits maturing by month"
+      >
+        <line className="axis-line" x1={padL} x2={W - padR} y1={padT + innerH} y2={padT + innerH} />
+        {buckets.map((b, i) => {
+          const h = Math.max((b.balance / max) * innerH, 2)
+          // A 2px surface gap between neighbours rather than a stroke around them.
+          const bx = padL + i * bw + 1
+          const bwid = Math.max(bw - 2, 1)
+          const labelled = b.soon || b.balance === biggest
+          return (
+            <g key={b.key}>
+              <rect
+                x={bx}
+                y={padT + innerH - h}
+                width={bwid}
+                height={h}
+                rx={4}
+                fill={b.soon ? '#a4cbda' : '#4c7590'}
+                onMouseEnter={(e) => {
+                  const r = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect()
+                  setTip({
+                    x: ((bx + bwid / 2) / W) * r.width,
+                    y: ((padT + innerH - h) / height) * r.height,
+                    node: (
+                      <>
+                        <div className="tooltip-title">
+                          {b.label}{b.soon ? ' — inside the window' : ''}
+                        </div>
+                        <div className="tooltip-row"><span>Maturing</span><b>{money(b.balance)}</b></div>
+                        <div className="tooltip-row">
+                          <span>Accounts</span><b>{b.count}</b>
+                        </div>
+                      </>
+                    ),
+                  })
+                }}
+              />
+              {labelled && (
+                <text
+                  className="mark-label"
+                  x={bx + bwid / 2}
+                  y={padT + innerH - h - 6}
+                  textAnchor="middle"
+                >
+                  {moneyShort(b.balance)}
+                </text>
+              )}
+              <text className="axis-text" x={bx + bwid / 2} y={padT + innerH + 16} textAnchor="middle">
+                {b.label}
+              </text>
+              <text
+                className="axis-text"
+                x={bx + bwid / 2}
+                y={padT + innerH + 29}
+                textAnchor="middle"
+                style={{ fill: '#7d7d7d' }}
+              >
+                {b.count}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+      {tip && <Tooltip tip={tip} width={1000} />}
+      {anySoon && (
+        <div className="legend">
+          <span className="legend-item">
+            <span className="legend-swatch" style={{ background: '#a4cbda' }} />{soonLabel}
+          </span>
+          <span className="legend-item">
+            <span className="legend-swatch" style={{ background: '#4c7590' }} />Later
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ══ Rate bands — how much money sits at each rate ════════════════════════ */
+
+/**
+ * Balance by interest rate.
+ *
+ * Rates are an ordered scale, so this is the one breakdown on the page that
+ * earns the light-to-dark ramp: the bands have a natural sequence and the
+ * colour carries it, low rate to high. Every band is also labelled with its
+ * rate, so the ordering never rests on colour alone.
+ */
+export function RateBandBars({
+  bands,
+  width = 480,
+  height = 340,
+}: {
+  bands: { ratePct: number; balance: number; count: number; interest: number }[]
+  /**
+   * The viewBox width, which is what actually sets the type size: an SVG scales
+   * to its container, so a 1000-wide box in a half-width card renders 10px text
+   * at under 5px. Sized near the container it sits in, the labels come out at
+   * the size they were written as.
+   */
+  width?: number
+  height?: number
+}) {
+  const [tip, setTip] = useState<Tip | null>(null)
+  const W = width
+  const padL = 10
+  const padR = 10
+  const padT = 26
+  const padB = 44
+  const innerW = W - padL - padR
+  const innerH = height - padT - padB
+  const max = Math.max(...bands.map((b) => b.balance), 1)
+  const bw = innerW / Math.max(bands.length, 1)
+  const ramp = VALUE_RAMP
+
+  if (bands.length === 0) return <Empty>No account states a rate.</Empty>
+
+  return (
+    <div className="chart-shell" onMouseLeave={() => setTip(null)}>
+      <svg
+        className="chart-svg"
+        viewBox={`0 0 ${W} ${height}`}
+        role="img"
+        aria-label="Balance held at each interest rate"
+      >
+        <line className="axis-line" x1={padL} x2={W - padR} y1={padT + innerH} y2={padT + innerH} />
+        {bands.map((b, i) => {
+          const h = Math.max((b.balance / max) * innerH, 2)
+          const bx = padL + i * bw + 1
+          const bwid = Math.max(bw - 2, 1)
+          // Darkest step to the lowest rate, lightest to the highest, so the
+          // ramp runs the same way the scale does.
+          const fill = ramp[Math.min(ramp.length - 1, Math.round((i / Math.max(bands.length - 1, 1)) * (ramp.length - 1)))]
+          return (
+            <g key={b.ratePct}>
+              <rect
+                x={bx}
+                y={padT + innerH - h}
+                width={bwid}
+                height={h}
+                rx={4}
+                fill={fill}
+                onMouseEnter={(e) => {
+                  const r = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect()
+                  setTip({
+                    x: ((bx + bwid / 2) / W) * r.width,
+                    y: ((padT + innerH - h) / height) * r.height,
+                    node: (
+                      <>
+                        <div className="tooltip-title">{b.ratePct.toFixed(2)}% a year</div>
+                        <div className="tooltip-row"><span>Held</span><b>{money(b.balance)}</b></div>
+                        <div className="tooltip-row"><span>Accounts</span><b>{b.count}</b></div>
+                        <div className="tooltip-row"><span>Interest a year</span><b>{money(b.interest)}</b></div>
+                      </>
+                    ),
+                  })
+                }}
+              />
+              <text
+                className="mark-label"
+                x={bx + bwid / 2}
+                y={padT + innerH - h - 6}
+                textAnchor="middle"
+              >
+                {moneyShort(b.balance)}
+              </text>
+              <text className="axis-text" x={bx + bwid / 2} y={padT + innerH + 16} textAnchor="middle">
+                {b.ratePct.toFixed(2)}%
+              </text>
+              <text
+                className="axis-text"
+                x={bx + bwid / 2}
+                y={padT + innerH + 29}
+                textAnchor="middle"
+                style={{ fill: '#7d7d7d' }}
+              >
+                {b.count} {b.count === 1 ? 'account' : 'accounts'}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+      {tip && <Tooltip tip={tip} width={W} />}
     </div>
   )
 }

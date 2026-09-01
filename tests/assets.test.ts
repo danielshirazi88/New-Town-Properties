@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   EMPTY_REGISTER, annualInterest, applySeed, assetBreakdown, assetTotals, blendedRate,
-  byInstitution, maturities, needsSeed, realEstateTotals, registerInterest, vehicleValued,
+  byInstitution, byRate, maturities, maturitySchedule, needsSeed, realEstateTotals,
+  registerInterest, vehicleValued,
   type AssetRegister, type InvestmentAsset, type VehicleAsset,
 } from '../src/lib/assets'
 import {
@@ -323,5 +324,76 @@ describe('seeding the register', () => {
       .toHaveLength(count)
     // And one that predates the mechanism entirely.
     expect(needsSeed({ investments: [], vehicles: [] }, INVESTMENT_SEED_VERSION)).toBe(true)
+  })
+})
+
+describe('the shape of the deposits', () => {
+  const r: AssetRegister = { ...EMPTY_REGISTER, investments: SEEDED_INVESTMENTS }
+  const asOf = new Date('2026-09-01T12:00:00')
+
+  it('groups what comes due by month, in order', () => {
+    const s = maturitySchedule(r, asOf)
+    expect(s.map((b) => b.key)).toEqual([
+      '2026-10', '2026-11', '2026-12', '2027-01', '2027-05', '2027-08',
+    ])
+    expect(s.map((b) => b.label)).toEqual([
+      'Oct 26', 'Nov 26', 'Dec 26', 'Jan 27', 'May 27', 'Aug 27',
+    ])
+    // November holds the four certificates opened the same day.
+    const nov = s.find((b) => b.key === '2026-11')!
+    expect(nov.count).toBe(4)
+    expect(nov.balance).toBeCloseTo(3_617_147.27, 2)
+    // December holds the big Millennium CD and the Republic one.
+    expect(s.find((b) => b.key === '2026-12')!.count).toBe(2)
+  })
+
+  it('accounts for every dated certificate exactly once', () => {
+    const s = maturitySchedule(r, asOf)
+    const cds = SEEDED_INVESTMENTS.filter((i) => i.maturityDate)
+    expect(s.reduce((a, b) => a + b.count, 0)).toBe(cds.length)
+    expect(s.reduce((a, b) => a + b.balance, 0))
+      .toBeCloseTo(cds.reduce((a, i) => a + i.balance, 0), 2)
+  })
+
+  it('leaves out what has no maturity rather than showing it as due', () => {
+    // The mutual fund has no term. Putting it in the ladder would imply a
+    // decision that does not exist.
+    const s = maturitySchedule(r, asOf)
+    expect(s.reduce((a, b) => a + b.count, 0)).toBe(SEEDED_INVESTMENTS.length - 1)
+  })
+
+  it('marks the months inside the decision window', () => {
+    const s = maturitySchedule(r, asOf)
+    const soon = s.filter((b) => b.soon)
+    expect(soon.map((b) => b.key)).toEqual(['2026-10', '2026-11'])
+    expect(soon.reduce((a, b) => a + b.balance, 0)).toBeCloseTo(4_133_897.79, 2)
+    // December 4th is 94 days out — just outside, and it should stay outside.
+    expect(s.find((b) => b.key === '2026-12')!.soon).toBe(false)
+  })
+
+  it('moves the window with the date, not with the data', () => {
+    const later = maturitySchedule(r, new Date('2026-10-01T12:00:00'))
+    expect(later.find((b) => b.key === '2026-12')!.soon).toBe(true)
+  })
+
+  it('bands the balances by rate, lowest first', () => {
+    const bands = byRate(r)
+    expect(bands.map((b) => b.ratePct)).toEqual([4.1, 4.25, 4.5, 5])
+    expect(bands.find((b) => b.ratePct === 4.25)!.balance).toBeCloseTo(8_146_329.13, 2)
+    expect(bands.find((b) => b.ratePct === 4.5)!.count).toBe(5)
+    expect(bands.find((b) => b.ratePct === 5)!.balance).toBeCloseTo(507_881.85, 2)
+  })
+
+  it('leaves an account with no rate out of the bands entirely', () => {
+    // Banding it at zero would invent a rate it does not have.
+    const bands = byRate(r)
+    expect(bands.some((b) => b.ratePct === 0)).toBe(false)
+    expect(bands.reduce((a, b) => a + b.count, 0)).toBe(SEEDED_INVESTMENTS.length - 1)
+    expect(bands.reduce((a, b) => a + b.interest, 0)).toBeCloseTo(registerInterest(r), 2)
+  })
+
+  it('says nothing at all about an empty register', () => {
+    expect(maturitySchedule(EMPTY_REGISTER, asOf)).toEqual([])
+    expect(byRate(EMPTY_REGISTER)).toEqual([])
   })
 })

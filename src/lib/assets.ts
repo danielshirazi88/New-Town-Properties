@@ -247,6 +247,89 @@ export function maturities(r: AssetRegister, asOf: Date = new Date()): Maturity[
     .sort((a, b) => a.daysAway - b.daysAway)
 }
 
+/* ── Shape of the deposits ───────────────────────────────────────────────── */
+
+export interface MaturityBucket {
+  /** `YYYY-MM`, so buckets sort naturally. */
+  key: string
+  /** "Oct 26". */
+  label: string
+  balance: number
+  count: number
+  /** Interest those accounts earn in a year at their stated rates. */
+  interest: number
+  /** True where the month is within the window a decision has to be made in. */
+  soon: boolean
+}
+
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/**
+ * When the money comes free, month by month.
+ *
+ * Only months that actually hold something appear. Padding the gaps with empty
+ * columns would spread five real bars across a year of whitespace and make the
+ * clustering — which is the whole point — impossible to see.
+ *
+ * Anything without a maturity date is left out rather than counted as due now:
+ * a mutual fund has no term, and putting it in the ladder would imply a decision
+ * that does not exist.
+ */
+export function maturitySchedule(
+  r: AssetRegister, asOf: Date = new Date(), soonDays = 90,
+): MaturityBucket[] {
+  const buckets = new Map<string, MaturityBucket>()
+  for (const m of maturities(r, asOf)) {
+    const d = m.date
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const row = buckets.get(key) ?? {
+      key,
+      label: `${SHORT_MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`,
+      balance: 0,
+      count: 0,
+      interest: 0,
+      soon: false,
+    }
+    row.balance += m.investment.balance
+    row.count += 1
+    row.interest += annualInterest(m.investment)
+    // A month counts as near if anything in it comes due inside the window.
+    if (m.daysAway <= soonDays) row.soon = true
+    buckets.set(key, row)
+  }
+  return [...buckets.values()].sort((a, b) => a.key.localeCompare(b.key))
+}
+
+export interface RateBand {
+  ratePct: number
+  balance: number
+  count: number
+  interest: number
+}
+
+/**
+ * How much money sits at each rate.
+ *
+ * Rates are an ordered scale, so this is the one breakdown here that earns a
+ * light-to-dark ramp: the bands have a natural sequence and the colour carries
+ * it. Accounts with no stated rate — a mutual fund, say — are left out
+ * entirely rather than banded at zero, which would invent a rate they do not
+ * have and drag the picture down with it.
+ */
+export function byRate(r: AssetRegister): RateBand[] {
+  const bands = new Map<number, RateBand>()
+  for (const i of r.investments) {
+    if (i.ratePct === undefined) continue
+    const b = bands.get(i.ratePct) ?? { ratePct: i.ratePct, balance: 0, count: 0, interest: 0 }
+    b.balance += i.balance
+    b.count += 1
+    b.interest += annualInterest(i)
+    bands.set(i.ratePct, b)
+  }
+  return [...bands.values()].sort((a, b) => a.ratePct - b.ratePct)
+}
+
 /* ── Totals ──────────────────────────────────────────────────────────────── */
 
 export interface AssetTotals {
