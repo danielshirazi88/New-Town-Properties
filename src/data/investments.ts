@@ -1,12 +1,22 @@
 import type { InvestmentAsset } from '../lib/assets'
 
 /**
- * Bank deposits, entered from the statements one account at a time.
+ * Bank accounts and investments, entered from the statements one at a time.
  *
  * These are seeded into the asset register rather than typed into it, so they
  * are under version control and arrive with the application instead of having to
  * be keyed in again on every device. Once seeded they behave like any other row:
  * editable, and deletable without coming back.
+ *
+ * Most of the certificates are with Millennium Bank; Republic and Pan Am hold
+ * one each. The Republic certificate is the only one that is not a twelve-month
+ * term — it runs eight months, and pays the best rate on the list at 5%.
+ *
+ * The PNC holding is a mutual fund rather than a deposit. It has no term, no
+ * maturity and no contracted rate, so none is recorded: what it returns depends
+ * on what the funds do. That means it contributes to the balance but not to the
+ * interest figure, and it is left out of the blended rate rather than dragging
+ * it down as though it paid nothing.
  *
  * Two things on this list look like transcription errors and are not:
  *
@@ -25,41 +35,67 @@ import type { InvestmentAsset } from '../lib/assets'
  */
 
 /** Bumped whenever rows are added below, so a saved register picks them up once. */
-export const INVESTMENT_SEED_VERSION = 1
+export const INVESTMENT_SEED_VERSION = 3
 
 const MILLENNIUM = 'Millennium Bank'
 
-/** A one-year certificate, which is what every row below is. */
+/** Add whole months to an ISO date, keeping the day of the month. */
+const addMonths = (iso: string, months: number): string => {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCMonth(d.getUTCMonth() + months)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * A certificate, described the way the bank does: a balance, a rate, an opening
+ * date and a term. The maturity date is derived from the term rather than typed
+ * alongside it, so the two can never disagree.
+ */
 const cd = (
   id: string,
+  institution: string,
   balance: number,
   ratePct: number,
   openedDate: string,
-  maturityDate: string,
+  termMonths: number,
 ): InvestmentAsset => ({
   id,
   kind: 'investment',
-  name: 'One-year CD',
-  institution: MILLENNIUM,
+  name: termMonths === 12 ? 'One-year CD' : `${termMonths}-month CD`,
+  institution,
   investmentKind: 'cd',
   balance,
   ratePct,
   openedDate,
-  maturityDate,
+  maturityDate: addMonths(openedDate, termMonths),
 })
 
 export const SEEDED_INVESTMENTS: InvestmentAsset[] = [
-  cd('cd-mb-251107-a', 1_033_470.65, 4.5, '2025-11-07', '2026-11-07'),
-  cd('cd-mb-251107-b', 516_735.32, 4.5, '2025-11-07', '2026-11-07'),
-  cd('cd-mb-251107-c', 1_033_470.65, 4.5, '2025-11-07', '2026-11-07'),
-  cd('cd-mb-251107-d', 1_033_470.65, 4.5, '2025-11-07', '2026-11-07'),
-  cd('cd-mb-251204-a', 5_104_391.56, 4.25, '2025-12-04', '2026-12-04'),
-  cd('cd-mb-251011-a', 516_750.52, 4.5, '2025-10-11', '2026-10-11'),
-  cd('cd-mb-260116-a', 1_020_850.67, 4.25, '2026-01-16', '2027-01-16'),
-  cd('cd-mb-260501-a', 1_010_543.45, 4.25, '2026-05-01', '2027-05-01'),
-  cd('cd-mb-260501-b', 1_010_543.45, 4.25, '2026-05-01', '2027-05-01'),
+  cd('cd-mb-251011-a', MILLENNIUM, 516_750.52, 4.5, '2025-10-11', 12),
+  cd('cd-mb-251107-a', MILLENNIUM, 1_033_470.65, 4.5, '2025-11-07', 12),
+  cd('cd-mb-251107-b', MILLENNIUM, 516_735.32, 4.5, '2025-11-07', 12),
+  cd('cd-mb-251107-c', MILLENNIUM, 1_033_470.65, 4.5, '2025-11-07', 12),
+  cd('cd-mb-251107-d', MILLENNIUM, 1_033_470.65, 4.5, '2025-11-07', 12),
+  cd('cd-mb-251204-a', MILLENNIUM, 5_104_391.56, 4.25, '2025-12-04', 12),
+  cd('cd-mb-260116-a', MILLENNIUM, 1_020_850.67, 4.25, '2026-01-16', 12),
+  cd('cd-mb-260406-a', 'Republic Bank', 507_881.85, 5, '2026-04-06', 8),
+  cd('cd-mb-260501-a', MILLENNIUM, 1_010_543.45, 4.25, '2026-05-01', 12),
+  cd('cd-mb-260501-b', MILLENNIUM, 1_010_543.45, 4.25, '2026-05-01', 12),
+  cd('cd-pa-260805-a', 'Pan Am Bank', 500_000, 4.1, '2026-08-05', 12),
+
+  // Not a deposit: it has no term, no maturity and no contracted rate. What it
+  // returns depends on what the funds do, so no rate is asserted — quoting one
+  // would put an invented yield into a total that has to be trustworthy.
+  {
+    id: 'mf-pnc-a',
+    kind: 'investment',
+    name: 'Mutual funds',
+    institution: 'PNC Bank',
+    investmentKind: 'mutual-fund',
+    balance: 44_602.22,
+  },
 ]
 
-/** What the certificates hold between them, for checking the transcription. */
+/** What these hold between them, for checking the transcription. */
 export const SEEDED_INVESTMENT_TOTAL = SEEDED_INVESTMENTS
   .reduce((a, i) => a + i.balance, 0)

@@ -47,7 +47,9 @@ export interface RealEstateAsset {
 
 /* ── Investments ─────────────────────────────────────────────────────────── */
 
-export type InvestmentKind = 'money-market' | 'cd' | 'savings' | 'checking' | 'treasury' | 'brokerage' | 'other'
+export type InvestmentKind =
+  | 'money-market' | 'cd' | 'savings' | 'checking' | 'treasury' | 'mutual-fund'
+  | 'brokerage' | 'other'
 
 export const INVESTMENT_KINDS: { id: InvestmentKind; label: string }[] = [
   { id: 'cd', label: 'Certificate of deposit' },
@@ -55,6 +57,7 @@ export const INVESTMENT_KINDS: { id: InvestmentKind; label: string }[] = [
   { id: 'savings', label: 'Savings' },
   { id: 'checking', label: 'Checking' },
   { id: 'treasury', label: 'Treasury' },
+  { id: 'mutual-fund', label: 'Mutual fund' },
   { id: 'brokerage', label: 'Brokerage' },
   { id: 'other', label: 'Other' },
 ]
