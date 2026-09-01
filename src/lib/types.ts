@@ -79,6 +79,21 @@ export interface Lease {
    * they should not be divided by square footage or counted as occupancy.
    */
   incomeType?: 'rent' | 'billboard' | 'parking' | 'note'
+  /**
+   * Free rent granted at commencement. Recorded on the lease rather than read
+   * off the months, because the concession outlives the year it was given in:
+   * from 2025 onwards the Body Shop pays every month, and the only place the
+   * free October of 2024 still shows is here. In the year the concession falls,
+   * the months carry `FREE` as well, so the loss is counted once and in the
+   * right year.
+   */
+  concession?: {
+    /** Number of months of free rent granted. */
+    months: number
+    /** Which calendar months were free, ISO `YYYY-MM`, where known. */
+    periods?: string[]
+    note?: string
+  }
   notes?: string
 }
 

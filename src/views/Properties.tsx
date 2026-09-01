@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { MonthlyAreaChart, RankedBars } from '../components/charts'
-import { Card, Empty, ExpiryBadge, Kpi } from '../components/ui'
+import { Card, ConcessionBadge, Empty, ExpiryBadge, Kpi } from '../components/ui'
 import { MONTHS, cellAmount, collected, isDark, realisedEscalationPct, rentPerSqFt } from '../lib/finance'
 import { dateLabel, money, num, pct, signedPct } from '../lib/format'
 import { rollup, type Expense } from '../lib/expenses'
@@ -10,9 +10,10 @@ import type { PortfolioKpis } from '../lib/portfolio'
 import type { PropertyMetrics } from '../lib/finance'
 import type { MonthCell } from '../lib/types'
 import { resolveProfile, type TenantProfiles } from '../lib/tenants'
+import { AVAILABLE_YEARS, yearLabel } from '../data/rentRolls'
 
 export function Properties({
-  k, expenses, selected, onSelect, onAddExpense, onTenant, profiles,
+  k, expenses, selected, onSelect, onAddExpense, onTenant, profiles, onYear,
 }: {
   k: PortfolioKpis
   expenses: Expense[]
@@ -21,6 +22,8 @@ export function Properties({
   onAddExpense: (propertyId: string) => void
   onTenant: (leaseId: string) => void
   profiles: TenantProfiles
+  /** Switch the rent roll year without going back to the sidebar. */
+  onYear: (year: number) => void
 }) {
   const metrics = selected ? k.properties.find((p) => p.property.id === selected) : undefined
   if (metrics) {
@@ -33,6 +36,7 @@ export function Properties({
         onAddExpense={onAddExpense}
         onTenant={onTenant}
         profiles={profiles}
+        onYear={onYear}
       />
     )
   }
@@ -130,7 +134,7 @@ export function Properties({
 /* ── Detail ──────────────────────────────────────────────────────────────── */
 
 function PropertyDetail({
-  k, m, expenses, onBack, onAddExpense, onTenant, profiles,
+  k, m, expenses, onBack, onAddExpense, onTenant, profiles, onYear,
 }: {
   k: PortfolioKpis
   m: PropertyMetrics
@@ -139,6 +143,7 @@ function PropertyDetail({
   onAddExpense: (id: string) => void
   onTenant: (leaseId: string) => void
   profiles: TenantProfiles
+  onYear: (year: number) => void
 }) {
   const [tab, setTab] = useState<'rent' | 'months' | 'expenses'>('rent')
 
@@ -265,12 +270,38 @@ function PropertyDetail({
       </div>
 
       <div className="section">
-        <div className="chip-row" style={{ marginBottom: 14 }}>
-          <button className={`chip${tab === 'rent' ? ' active' : ''}`} onClick={() => setTab('rent')}>Rent roll</button>
-          <button className={`chip${tab === 'months' ? ' active' : ''}`} onClick={() => setTab('months')}>Month by month</button>
-          <button className={`chip${tab === 'expenses' ? ' active' : ''}`} onClick={() => setTab('expenses')}>
-            Expenses {roll.count > 0 && <span style={{ opacity: 0.75 }}>{roll.count}</span>}
-          </button>
+        <div
+          className="chip-row"
+          style={{ marginBottom: 14, justifyContent: 'space-between', alignItems: 'center' }}
+        >
+          <div className="chip-row">
+            <button className={`chip${tab === 'rent' ? ' active' : ''}`} onClick={() => setTab('rent')}>Rent roll</button>
+            <button className={`chip${tab === 'months' ? ' active' : ''}`} onClick={() => setTab('months')}>Month by month</button>
+            <button className={`chip${tab === 'expenses' ? ' active' : ''}`} onClick={() => setTab('expenses')}>
+              Expenses {roll.count > 0 && <span style={{ opacity: 0.75 }}>{roll.count}</span>}
+            </button>
+          </div>
+          {/*
+            The year lives in the sidebar too, but this is where you actually
+            want it: reading one property's rent roll and stepping back a year
+            to see what the same unit did should not mean leaving the page.
+          */}
+          <div className="chip-row" role="group" aria-label="Rent roll year">
+            <span className="t-mute" style={{ fontSize: 11.5, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              Year
+            </span>
+            {AVAILABLE_YEARS.map((y) => (
+              <button
+                key={y}
+                className={`chip${k.fiscalYear === y ? ' active' : ''}`}
+                onClick={() => onYear(y)}
+                title={yearLabel(y)}
+                aria-pressed={k.fiscalYear === y}
+              >
+                {y}
+              </button>
+            ))}
+          </div>
         </div>
 
         {tab === 'rent' && (
@@ -322,6 +353,7 @@ function PropertyDetail({
                           </td>
                           <td className="t-mono t-mute t-nowrap" style={{ fontSize: 12 }}>
                             {dateLabel(l.leaseStart)}<br />{dateLabel(l.leaseEnd)}
+                            <ConcessionBadge lease={l} block />
                           </td>
                           <td><ExpiryBadge lease={l} asOf={k.asOf} /></td>
                           <td className="num">

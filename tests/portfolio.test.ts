@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { LEASES } from '../src/data/leases'
 import { PROPERTIES } from '../src/data/properties'
 import { APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../src/data/apollo'
-import { cellAmount, collected, firstRate, grossPotential, isDark, lastRate, realisedEscalationPct, rentPerSqFt, valueAtCap, walt } from '../src/lib/finance'
+import { cellAmount, collected, concessionLoss, concessionSummary, firstRate, grossPotential, isDark, lastRate, realisedEscalationPct, rentPerSqFt, vacancyLoss, valueAtCap, walt } from '../src/lib/finance'
 import { computeKpis, resolveData, valuationModel } from '../src/lib/portfolio'
 import { AVAILABLE_YEARS, CURRENT_YEAR, LATEST_YEAR, isPartYear, rentRoll, unitKey, yearLabel } from '../src/data/rentRolls'
 import { RETURN_2023, RETURN_2024 } from '../src/data/taxReturns'
@@ -711,5 +711,71 @@ describe('comparing one year against the next', () => {
     const unmatched = all.filter((r) => !r.before || !r.after)
     // Only genuine arrivals and departures, not renames.
     expect(unmatched.every((r) => r.before?.propertyId !== 'ave-25-1401')).toBe(true)
+  })
+})
+
+/**
+ * The Body Shop took 1401 N 25th Avenue in October 2024 with the first month
+ * free. All three sheets print a 2021 commencement, which cannot be right — the
+ * unit billed nothing from January to September 2024 — and the free month was
+ * transcribed as a vacancy, which made a deliberate concession look like
+ * downtime nobody could let.
+ */
+describe('the Body Shop concession', () => {
+  const shopIn = (year: number) =>
+    rentRoll(year).leases.find((l) => l.id === 'a25-body-shop')!
+
+  it('commences in October 2024 on every sheet, not 2021', () => {
+    for (const year of [2024, 2025, 2026]) {
+      expect(shopIn(year).leaseStart, String(year)).toBe('2024-10-01')
+      expect(shopIn(year).leaseEnd, String(year)).toBe('2027-10-31')
+    }
+  })
+
+  it('lands on the printed expiry: one free month plus thirty-six paid', () => {
+    // The corroboration for the correction. October 2024 free, November 2024
+    // through October 2027 paid — exactly the 31 October 2027 the sheets print.
+    const start = new Date('2024-10-01T00:00:00Z')
+    const end = new Date(start)
+    end.setUTCMonth(end.getUTCMonth() + 1 + 36)
+    end.setUTCDate(0)
+    expect(end.toISOString().slice(0, 10)).toBe('2027-10-31')
+  })
+
+  it('counts October 2024 as free rent, not as a vacant month', () => {
+    const shop = shopIn(2024)
+    expect(shop.months[9]).toBe('FREE')
+    expect(shop.months.filter((m) => m === 'V')).toHaveLength(9)
+    expect(concessionLoss(shop)).toBe(6_075)
+    expect(vacancyLoss(shop)).toBe(9 * 6_075)
+    // Both are worth nothing collected, so the printed row total is untouched.
+    expect(collected(shop)).toBe(12_150)
+    expect(shop.statedAnnualTotal).toBe(12_150)
+  })
+
+  it('still says "1 month free" in years with no free cell left to read', () => {
+    // 2025 and 2026 collect every month. Counting FREE cells would report no
+    // concession at all, which is how the opening month got lost the first time.
+    for (const year of [2024, 2025, 2026]) {
+      const c = concessionSummary(shopIn(year))!
+      expect(c, String(year)).toBeDefined()
+      expect(c.months).toBe(1)
+      expect(c.label).toBe('1 month free')
+      expect(c.periodLabel).toBe('October 2024')
+    }
+    expect(concessionSummary(shopIn(2024))!.lossThisYear).toBe(6_075)
+    expect(concessionSummary(shopIn(2025))!.lossThisYear).toBe(0)
+    expect(concessionSummary(shopIn(2026))!.lossThisYear).toBe(0)
+  })
+
+  it('leaves every other lease without a concession', () => {
+    // A concession invented by a bad edit would quietly reduce vacancy loss.
+    for (const year of AVAILABLE_YEARS) {
+      for (const l of rentRoll(year).leases) {
+        if (l.id === 'a25-body-shop') continue
+        const c = concessionSummary(l)
+        if (c) expect(c.monthsThisYear, `${year} ${l.id}`).toBeGreaterThan(0)
+      }
+    }
   })
 })

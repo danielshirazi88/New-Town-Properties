@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Card, Empty, Kpi } from '../components/ui'
 import { RankedBars } from '../components/charts'
-import { money, moneyShort, num, pct, signedPct } from '../lib/format'
-import { cellAmount, collected, firstRate, isDark, lastRate } from '../lib/finance'
+import { dateLabel, money, moneyShort, num, pct, signedPct } from '../lib/format'
+import { cellAmount, collected, firstRate, freeMonths, isDark, lastRate } from '../lib/finance'
 import { AVAILABLE_YEARS, rentRoll, unitKey } from '../data/rentRolls'
 import { computeKpis, resolveData } from '../lib/portfolio'
 import type { Overrides } from '../lib/overrides'
@@ -336,21 +336,37 @@ function MoveCallout({
   const tenant = (up ? row.after : row.before)?.tenant ?? row.after?.tenant ?? row.before?.tenant
   const renamed = row.before && row.after && row.before.unit !== row.after.unit
   const notes = (row.after ?? row.before)?.notes
+  // Months a unit did not bill are not all the same kind of month. Free rent
+  // given at commencement is a deal the landlord agreed to; reading it as
+  // downtime overstates how much of the swing was the unit sitting empty.
+  const freeBefore = row.before ? freeMonths(row.before) : 0
+  const freeAfter = row.after ? freeMonths(row.after) : 0
 
   const rateLine = row.wasRate > 0 && row.nowRate > 0
     ? `${money(row.wasRate)} → ${money(row.nowRate)} a month`
     : row.nowRate > 0 ? `${money(row.nowRate)} a month` : 'nothing billed'
 
-  const why = {
-    occupancy: `The rent did not move — it was ${rateLine} throughout. What changed is how much of `
-      + `the year the unit billed for: ${row.wasMonths} months against ${row.nowMonths}.`,
-    rate: `Occupancy was much the same — ${row.wasMonths} months against ${row.nowMonths} — so this `
-      + `is the rent itself: ${rateLine}.`,
-    both: `Both moved: the rent went ${rateLine}, and the months billed went from ${row.wasMonths} `
-      + `to ${row.nowMonths}.`,
-    none: `Neither the rent nor the months billed moved much; the difference is in the shape of the `
-      + `year rather than in either.`,
-  }[row.driver]
+  // A unit that stopped billing altogether has no rate to compare, so the
+  // "both moved" wording ("the rent went nothing billed") does not apply to it.
+  const emptied = row.nowRate === 0 && row.wasRate > 0
+  const filled = row.wasRate === 0 && row.nowRate > 0
+
+  const why = emptied
+    ? `The unit stopped billing: ${row.wasMonths} months at ${money(row.wasRate)} in the earlier `
+      + `year, nothing in the later one.`
+    : filled
+      ? `The unit was not billing in the earlier year and billed ${row.nowMonths} `
+        + `${row.nowMonths === 1 ? 'month' : 'months'} at ${money(row.nowRate)} in the later one.`
+      : {
+        occupancy: `The rent did not move — it was ${rateLine} throughout. What changed is how much of `
+          + `the year the unit billed for: ${row.wasMonths} months against ${row.nowMonths}.`,
+        rate: `Occupancy was much the same — ${row.wasMonths} months against ${row.nowMonths} — so this `
+          + `is the rent itself: ${rateLine}.`,
+        both: `Both moved: the rent went ${rateLine}, and the months billed went from ${row.wasMonths} `
+          + `to ${row.nowMonths}.`,
+        none: `Neither the rent nor the months billed moved much; the difference is in the shape of the `
+          + `year rather than in either.`,
+      }[row.driver]
 
   return (
     <div className={`callout${alert ? '' : ' neutral'}`}>
@@ -360,6 +376,23 @@ function MoveCallout({
         {up ? 'up' : 'down'} <strong>{money(Math.abs(delta))}</strong> across the year.
       </p>
       <p style={{ marginTop: 6 }}>{why}</p>
+      {(freeBefore > 0 || freeAfter > 0) && (
+        <p style={{ marginTop: 6 }}>
+          {freeBefore > 0 && (
+            <>
+              Of the earlier year’s non-billing months, {freeBefore}{' '}
+              {freeBefore === 1 ? 'was' : 'were'} free rent rather than vacancy
+              {row.before?.leaseStart && <> — the lease began {dateLabel(row.before.leaseStart)}</>}.{' '}
+            </>
+          )}
+          {freeAfter > 0 && (
+            <>
+              {freeAfter} {freeAfter === 1 ? 'month' : 'months'} of the later year{' '}
+              {freeAfter === 1 ? 'was' : 'were'} given free.
+            </>
+          )}
+        </p>
+      )}
       {renamed && (
         <p style={{ marginTop: 6 }}>
           The same bay, listed as “{row.before!.unit}” in the earlier year and “{row.after!.unit}”

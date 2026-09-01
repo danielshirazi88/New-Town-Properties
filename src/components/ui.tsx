@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { monthsRemaining, type PropertyMetrics } from '../lib/finance'
+import { concessionSummary, monthsRemaining, type PropertyMetrics } from '../lib/finance'
 import type { Lease } from '../lib/types'
 
 export function Kpi({
@@ -80,6 +80,21 @@ export function ExpiryBadge({ lease, asOf }: { lease: Lease; asOf?: Date }) {
       {info.label}
     </span>
   )
+}
+
+/**
+ * Free rent granted at commencement. Shown wherever a lease's term is shown,
+ * because "since 1 October 2024" and "first rent 1 November 2024" are both true
+ * and reading only the first one makes the opening month look like a bad debt.
+ */
+export function ConcessionBadge({ lease, block }: { lease: Lease; block?: boolean }) {
+  const c = concessionSummary(lease)
+  if (!c) return null
+  const title = [c.periodLabel && `Free: ${c.periodLabel}`, c.note].filter(Boolean).join(' — ')
+  const badge = <span className="badge warn" title={title || undefined}>{c.label}</span>
+  // Wrapped here rather than at the call site so a lease with no concession
+  // does not leave an empty spacer on every row of the table.
+  return block ? <div style={{ marginTop: 3 }}>{badge}</div> : badge
 }
 
 export function Bar({ value, max }: { value: number; max: number }) {

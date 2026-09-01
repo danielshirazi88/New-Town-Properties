@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Card, Empty, ExpiryBadge, Kpi } from '../components/ui'
+import { Card, ConcessionBadge, Empty, ExpiryBadge, Kpi } from '../components/ui'
 import { cellAmount, collected, darkMonths, isDark, realisedEscalationPct, rentPerSqFt, tenancyYears } from '../lib/finance'
 import { dateLabel, money, num, signedPct } from '../lib/format'
 import { download } from '../lib/expenses'
@@ -195,6 +195,7 @@ export function RentRoll({
                       <td className="num t-mute">{years !== undefined ? `${years.toFixed(1)} yr` : '—'}</td>
                       <td className="t-mono t-mute t-nowrap" style={{ fontSize: 12 }}>
                         {dateLabel(l.leaseStart)}<br />{dateLabel(l.leaseEnd)}
+                        <ConcessionBadge lease={l} block />
                       </td>
                       <td><ExpiryBadge lease={l} asOf={k.asOf} /></td>
                       <td className="num">

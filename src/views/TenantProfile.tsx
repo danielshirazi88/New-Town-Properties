@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Card, Empty, ExpiryBadge, Kpi } from '../components/ui'
-import { MONTHS, collected, lastRate, rentPerSqFt, tenancyYears } from '../lib/finance'
+import { Card, ConcessionBadge, Empty, ExpiryBadge, Kpi } from '../components/ui'
+import { MONTHS, collected, concessionSummary, lastRate, rentPerSqFt, tenancyYears } from '../lib/finance'
 import { dateLabel, money, pct } from '../lib/format'
 import { PAYMENT_METHODS, methodLabel, profileCompleteness, resolveProfile,
   type PaymentMethodId, type TenantProfile as Profile, type TenantProfiles } from '../lib/tenants'
@@ -55,6 +55,7 @@ export function TenantProfileView({
   const completeness = profileCompleteness(resolved)
   const years = tenancyYears(lease)
   const psf = rentPerSqFt(lease)
+  const concession = concessionSummary(lease)
 
   const save = () => {
     const clean: Profile = {
@@ -88,12 +89,34 @@ export function TenantProfileView({
         <Kpi label="Lease ends" value={lease.leaseEnd ? dateLabel(lease.leaseEnd) : 'Not recorded'} small
           note={<ExpiryBadge lease={lease} asOf={k.asOf} />} />
         <Kpi label="In place" value={years !== undefined ? `${years.toFixed(1)} yr` : '—'}
-          note={lease.leaseStart ? `Since ${dateLabel(lease.leaseStart)}` : undefined} />
+          note={lease.leaseStart ? (
+            <>
+              Since {dateLabel(lease.leaseStart)}
+              {concession && <> · <ConcessionBadge lease={lease} /></>}
+            </>
+          ) : undefined} />
         <Kpi label="Area" value={lease.squareFeet ? `${lease.squareFeet.toLocaleString()} sf` : '—'}
           note={psf !== undefined ? `$${psf.toFixed(2)} per sq ft` : undefined} />
         <Kpi label="Deposit held" value={lease.securityDeposit ? money(lease.securityDeposit) : '—'}
           note={lease.renewalOptions ? `Options: ${lease.renewalOptions}` : undefined} />
       </div>
+
+      {concession && (
+        <div className="callout neutral" style={{ marginTop: 12 }}>
+          <div className="callout-title">
+            <span className="badge warn">{concession.label}</span>
+            {lease.leaseStart && <>Lease commenced {dateLabel(lease.leaseStart)}</>}
+          </div>
+          <p>
+            {concession.periodLabel
+              ? `${concession.periodLabel} was rent-free, so the first rent was collected the month after.`
+              : 'Free rent was granted at commencement.'}
+            {concession.lossThisYear > 0
+              && ` ${money(concession.lossThisYear)} forgone in ${k.fiscalYear} — a concession, not a missed payment.`}
+          </p>
+          {concession.note && <p className="t-mute">{concession.note}</p>}
+        </div>
+      )}
 
       {record && record.chargesSettled > 0 && (
         <div className="kpi-grid" style={{ marginTop: 12 }}>

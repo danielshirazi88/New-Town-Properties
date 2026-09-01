@@ -200,10 +200,17 @@ LEASES_2024.push(
     contacts: [{ name: 'Vitalii Golyk', phone: '312-866-6726' }],
     months: [...r(6875, 9), 'V', ...r(3675, 2)], statedAnnualTotal: 69225, leaseStart: '2024-11-01', leaseEnd: '2027-10-31', statedEscalationPct: 5, leaseType: 'MG',
     notes: 'Two separate totals on the sheet — $61,875 through September at $6,875, then $7,350 across November and December at $3,675. The unit appears as "Mechanic" in 2025.' },
+  // The sheet prints a 2021 commencement for this bay, which cannot be right:
+  // it billed nothing from January to September 2024. The lease began 1 October
+  // 2024 with the first month free, so October is a concession — the unit was
+  // let and the landlord chose to forgo the rent, which is a different thing
+  // from nobody being in it. One free month plus 36 paid from October 2024
+  // lands exactly on the 31 October 2027 expiry the sheet does print.
   { id: 'a25-body-shop', propertyId: 'ave-25-1401', unit: 'Body Shop', tenant: 'Body Shop',
     contacts: [{ name: 'Bektur Karimov', phone: '773-815-7770' }, { name: 'Russ Ikramov', phone: '224-661-2714' }],
-    months: [...r('V', 10), ...r(6075, 2)], statedAnnualTotal: 12150, leaseStart: '2021-10-01', leaseEnd: '2027-10-31', statedEscalationPct: 5, leaseType: 'MG',
-    notes: 'Only November and December are billed on the 2024 sheet.' },
+    months: [...r('V', 9), 'FREE', ...r(6075, 2)], statedAnnualTotal: 12150, leaseStart: '2024-10-01', leaseEnd: '2027-10-31', statedEscalationPct: 5, leaseType: 'MG',
+    concession: { months: 1, periods: ['2024-10'], note: 'First month free at commencement — October 2024. Collection began 1 November 2024.' },
+    notes: 'Took the bay 1 October 2024 with October free, so the first rent came in on 1 November. The sheet prints a 2021 commencement it contradicts.' },
   { id: 'a25-genuine-detailing', propertyId: 'ave-25-1401', unit: 'Genuine Automotive Detailing', tenant: 'Genuine Automotive Detailing',
     contacts: [{ name: 'Rudy', phone: '708-296-2707' }],
     months: [...r(3445, 3), ...r(3655, 8), 3480], statedAnnualTotal: 43230, leaseStart: '2006-12-01', leaseEnd: '2025-03-31', statedEscalationPct: 5, leaseType: 'MG',

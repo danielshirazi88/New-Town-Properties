@@ -53,6 +53,56 @@ export const vacantMonths = (l: Lease): number => l.months.filter(isVacant).leng
 export const freeMonths = (l: Lease): number => l.months.filter(isFree).length
 export const darkMonths = (l: Lease): number => l.months.filter(isDark).length
 
+export interface ConcessionSummary {
+  /** Total months of free rent granted at commencement. */
+  months: number
+  /** How many of those fall inside the year being shown. */
+  monthsThisYear: number
+  /** Rent forgone inside this year, valued at the imputed rate. */
+  lossThisYear: number
+  /** "1 month free", "3 months free". */
+  label: string
+  /** "October 2024", where the free months are named on the lease. */
+  periodLabel?: string
+  note?: string
+}
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+/** Spell out an ISO `YYYY-MM` as "October 2024". */
+const monthLabel = (iso: string): string => {
+  const [y, m] = iso.split('-')
+  const name = MONTH_NAMES[Number(m) - 1]
+  return name ? `${name} ${y}` : iso
+}
+
+/**
+ * Free rent granted at commencement, if any.
+ *
+ * A concession outlives the year it was given in: the Body Shop took October
+ * 2024 free and has paid every month since, so on the 2025 and 2026 sheets
+ * there is no `FREE` cell to read and the only record is the one written on the
+ * lease. This reads the declaration first and falls back to counting the cells,
+ * so a concession noticed on a sheet but never written down still shows.
+ */
+export function concessionSummary(l: Lease): ConcessionSummary | undefined {
+  const counted = freeMonths(l)
+  const months = l.concession?.months ?? counted
+  if (months <= 0) return undefined
+  const periods = l.concession?.periods
+  return {
+    months,
+    monthsThisYear: counted,
+    lossThisYear: concessionLoss(l),
+    label: `${months} month${months === 1 ? '' : 's'} free`,
+    periodLabel: periods?.length ? periods.map(monthLabel).join(', ') : undefined,
+    note: l.concession?.note,
+  }
+}
+
 /** Gross potential rent: what the year would have produced with no downtime. */
 export function grossPotential(l: Lease): number {
   return collected(l) + vacancyLoss(l) + concessionLoss(l)

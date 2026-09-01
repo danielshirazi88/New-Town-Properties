@@ -307,6 +307,7 @@ export default function App() {
             onAddExpense={(id) => { setExpenseSeed(id); setTab('expenses') }}
             onTenant={goTenant}
             profiles={profileState.value}
+            onYear={setYear}
           />
         )}
         {tab === 'rentroll' && (

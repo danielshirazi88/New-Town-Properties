@@ -784,10 +784,13 @@ export const LEASES: Lease[] = [
     ],
     months: [...r(6075, 10), ...r(6370, 2)],
     statedAnnualTotal: 73490.0,
-    leaseStart: '2021-10-01',
+    leaseStart: '2024-10-01',
     leaseEnd: '2027-10-31',
     statedEscalationPct: 5,
     leaseType: 'MG',
+    concession: { months: 1, periods: ['2024-10'], note: 'First month free at commencement — October 2024. Collection began 1 November 2024.' },
+    notes:
+      'Took the bay 1 October 2024 with October free. The sheet prints a 2021 commencement it contradicts.',
   },
   {
     id: 'a25-genuine-detailing',
