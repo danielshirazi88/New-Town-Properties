@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Card, ConcessionBadge, Empty, ExpiryBadge, Kpi } from '../components/ui'
+import { AskingBadge, Card, ConcessionBadge, Empty, ExpiryBadge, Kpi } from '../components/ui'
 import { cellAmount, collected, darkMonths, isDark, realisedEscalationPct, rentPerSqFt, tenancyYears } from '../lib/finance'
 import { dateLabel, money, num, signedPct } from '../lib/format'
 import { download } from '../lib/expenses'
@@ -188,6 +188,7 @@ export function RentRoll({
                           {l.tenant}
                         </button>
                         {dark > 0 && <span className="badge warn" style={{ marginTop: 3 }}>{dark} dark {dark === 1 ? 'month' : 'months'}</span>}
+                        <AskingBadge lease={l} block />
                       </td>
                       <td className="t-mute t-nowrap">{propName(l.propertyId)}</td>
                       <td className="t-mono t-mute">{l.unit}</td>

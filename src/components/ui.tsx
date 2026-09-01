@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
 import {
-  concessionSummary, isConveyed, isMonthToMonth, monthsRemaining, payingLately,
+  concessionSummary, isConveyed, isMonthToMonth, isOnTheMarket, monthsRemaining, payingLately,
   type PropertyMetrics,
 } from '../lib/finance'
+import { money } from '../lib/format'
 import type { Lease } from '../lib/types'
 
 export function Kpi({
@@ -118,6 +119,23 @@ export function ConcessionBadge({ lease, block }: { lease: Lease; block?: boolea
   const badge = <span className="badge warn" title={title || undefined}>{c.label}</span>
   // Wrapped here rather than at the call site so a lease with no concession
   // does not leave an empty spacer on every row of the table.
+  return block ? <div style={{ marginTop: 3 }}>{badge}</div> : badge
+}
+
+/**
+ * What a landlord is asking for space standing empty.
+ *
+ * Marked as asking rather than shown as a figure on its own, because a number
+ * beside a vacant unit reads like rent unless it says otherwise — and this one
+ * is a hope, not a receipt.
+ */
+export function AskingBadge({ lease, block }: { lease: Lease; block?: boolean }) {
+  if (!isOnTheMarket(lease)) return null
+  const badge = (
+    <span className="badge mute" title="Asking rent — the unit is empty and this is what it is offered at">
+      Asking {money(lease.askingRent!)}/mo
+    </span>
+  )
   return block ? <div style={{ marginTop: 3 }}>{badge}</div> : badge
 }
 

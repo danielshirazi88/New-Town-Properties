@@ -70,6 +70,15 @@ export interface Lease {
    * printed on a sheet that never stated it.
    */
   squareFeetFromYear?: number
+  /**
+   * Monthly rent sought for space standing empty.
+   *
+   * A vacant unit that has never billed has no rate to impute one from, so
+   * without this its downtime is valued at nothing and an empty suite looks
+   * costless. This is what the landlord is asking, not what anyone is paying:
+   * it values the vacancy and it never counts as income.
+   */
+  askingRent?: number
   /** Security deposit held against the unit. */
   securityDeposit?: number
   /** Renewal options as written, e.g. "5YR + 5YR" or "M to M". */

@@ -77,16 +77,23 @@ export const LEASES_2026: Lease[] = [
     months: [1400, ...r(1495, 7), ...rest], statedAnnualTotal: 11865,
     leaseStart: '2005-02-01', leaseEnd: '2029-01-31', statedEscalationPct: 5, leaseType: 'MG',
     squareFeet: 700, securityDeposit: 1500, renewalOptions: '2YR + 2YR + 2YR' },
+  // The four empty units at Plaza #1. The sheet prints square footage and
+  // nothing else, so until the owner priced them their downtime was valued at
+  // zero and the space looked free to leave empty. The asking rents below are
+  // his, given 1 September 2026 — what the space should fetch, not what anyone
+  // is paying. They value the vacancy; they are never counted as income.
   { id: 'p1-apartment', propertyId: 'plaza-1', unit: '2F', tenant: 'Apartment — vacant',
     contacts: [], months: [...r('V', 8), ...rest], statedAnnualTotal: 0, leaseType: 'MG',
-    squareFeet: 800, notes: 'Empty all year so far.' },
+    squareFeet: 800, askingRent: 1495, notes: 'Empty all year so far.' },
   { id: 'p1-rw-warehouse', propertyId: 'plaza-1', unit: 'RW Warehouse', tenant: 'Warehouse — vacant',
     contacts: [], months: [...r('V', 8), ...rest], statedAnnualTotal: 0, leaseType: 'MG',
-    squareFeet: 2500, notes: 'First appears on the 2026 sheet. At 2,500 sq ft this is the largest empty space in the portfolio.' },
+    squareFeet: 2500, askingRent: 4000, notes: 'First appears on the 2026 sheet. At 2,500 sq ft this is the largest empty space in the portfolio.' },
   { id: 'p1-r1', propertyId: 'plaza-1', unit: 'R1', tenant: 'R1 — vacant',
-    contacts: [], months: [...r('V', 8), ...rest], statedAnnualTotal: 0, leaseType: 'MG', squareFeet: 560 },
+    contacts: [], months: [...r('V', 8), ...rest], statedAnnualTotal: 0, leaseType: 'MG',
+    squareFeet: 560, askingRent: 500 },
   { id: 'p1-r2', propertyId: 'plaza-1', unit: 'R2', tenant: 'R2 — vacant',
-    contacts: [], months: [...r('V', 8), ...rest], statedAnnualTotal: 0, leaseType: 'MG', squareFeet: 310 },
+    contacts: [], months: [...r('V', 8), ...rest], statedAnnualTotal: 0, leaseType: 'MG',
+    squareFeet: 310, askingRent: 500 },
 
   // ─── Plaza #2 — 1681–93 N Mannheim ─────────────────────────────────────────
   { id: 'p2-stone-park-gold', propertyId: 'plaza-2', unit: '1693', tenant: 'Stone Park Gold',

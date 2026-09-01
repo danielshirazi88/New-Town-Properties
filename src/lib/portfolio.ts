@@ -126,6 +126,15 @@ export interface PortfolioKpis {
   unmeasuredUnits: number
   /** Rent forgone each year on empty space, at the property's own rate. */
   vacantSqFtAnnualValue: number
+  /**
+   * Monthly rent sought across every empty unit that has been priced, and the
+   * year it would make. Not a forecast — nothing says the space will let, or
+   * let at that — but it is the landlord's own number for what the vacancy is
+   * costing, which beats an estimate off a per-square-foot average.
+   */
+  askingRentMonthly: number
+  askingRentAnnual: number
+  unitsOnMarket: number
   securityDepositsHeld: number
 
   // ── Apollo ───────────────────────────────────────────────────────────────
@@ -429,7 +438,17 @@ export function computeKpis(asOf: Date = AS_OF, data: ResolvedData = resolveData
     unmeasuredUnits: props.reduce((a, p) => a + p.unmeasuredUnits, 0),
     // Empty space valued at the rate its own property actually achieves, which
     // is a fairer estimate than a single portfolio-wide average.
-    vacantSqFtAnnualValue: props.reduce((a, p) => a + p.vacantSquareFeet * p.rentPerSqFt, 0),
+    // Priced empty units take the owner's own asking rent; the rest fall back to
+    // what their property's let space achieves. Mixing the two beats using the
+    // per-square-foot estimate everywhere, which assumes a back room is worth
+    // what the frontage is.
+    vacantSqFtAnnualValue: props.reduce(
+      (a, p) => a + (p.askingMonthly > 0 ? p.askingMonthly * 12 : p.vacantSquareFeet * p.rentPerSqFt),
+      0,
+    ),
+    askingRentMonthly: props.reduce((a, p) => a + p.askingMonthly, 0),
+    askingRentAnnual: props.reduce((a, p) => a + p.askingMonthly, 0) * 12,
+    unitsOnMarket: props.reduce((a, p) => a + p.unitsOnMarket, 0),
     securityDepositsHeld: commercialLeases.reduce((a, l) => a + (l.securityDeposit ?? 0), 0),
 
     apolloLots: paying.length,

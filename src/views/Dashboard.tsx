@@ -165,6 +165,11 @@ export function Dashboard({
             note={`${money(k.rentAtRisk12)} at risk`} warn />
           <Kpi label="Escalations not taken" value={num(k.bumpsNotTaken.length)}
             note={`${money(k.totalForgoneFromMissedBumps)} left on the table`} warn />
+          {k.unitsOnMarket > 0 && (
+            <Kpi label="Empty space on the market" value={`${money(k.askingRentMonthly)}/mo`}
+              note={`${k.unitsOnMarket} units · ${money(k.askingRentAnnual)} a year at the asking rents`}
+              warn />
+          )}
           <Kpi label="Vacancy & free rent" value={money(k.vacancyLoss + k.concessionLoss)}
             note={`${k.totalDarkMonths} months collected nothing`} warn />
           <Kpi label="Vacant unit at 1211 S Prairie" value={money(15080)}

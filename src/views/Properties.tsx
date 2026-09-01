@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { MonthlyAreaChart, RankedBars } from '../components/charts'
-import { Card, ConcessionBadge, Empty, ExpiryBadge, Kpi } from '../components/ui'
+import { AskingBadge, Card, ConcessionBadge, Empty, ExpiryBadge, Kpi } from '../components/ui'
 import { MONTHS, cellAmount, collected, isDark, realisedEscalationPct, rentPerSqFt } from '../lib/finance'
 import { dateLabel, money, num, pct, signedPct } from '../lib/format'
 import { rollup, type Expense } from '../lib/expenses'
@@ -250,9 +250,18 @@ function PropertyDetail({
             <Kpi label="Rentable area" value={`${m.squareFeet.toLocaleString()} sf`}
               note={`${m.leasedSquareFeet.toLocaleString()} sf let · ${pct(m.occupancyBySqFtPct, 0)}`} />
             <Kpi accent label="Rent per sq ft" value={`$${m.rentPerSqFt.toFixed(2)}`} note="Annualised, let space only" />
+            {/* Where the owner has priced the empty units his figure stands. The
+                per-square-foot estimate assumes vacant space is worth what let
+                space fetches, and here the frontage rents for far more than the
+                back rooms and the warehouse — $34.51 a foot against $18.69. */}
             {m.vacantSquareFeet > 0 && (
               <Kpi label="Empty space" value={`${m.vacantSquareFeet.toLocaleString()} sf`}
-                note={`${money(m.vacantSquareFeet * m.rentPerSqFt)} a year at this property's rate`} warn />
+                note={m.askingMonthly > 0
+                  ? `${money(m.askingMonthly * 12)} a year at the asking rents`
+                    + ` — $${((m.askingMonthly * 12) / m.vacantSquareFeet).toFixed(2)} per sq ft`
+                    + ` across ${m.unitsOnMarket} ${m.unitsOnMarket === 1 ? 'unit' : 'units'}`
+                  : `${money(m.vacantSquareFeet * m.rentPerSqFt)} a year at this property's rate`}
+                warn />
             )}
           </>
         )}
@@ -349,6 +358,7 @@ function PropertyDetail({
                               {resolveProfile(l.id, l.contacts, profiles).displayName || l.tenant}
                               <span className="t-mute" style={{ fontSize: 11, marginLeft: 6 }}>profile ›</span>
                             </div>
+                            <AskingBadge lease={l} block />
                             {l.notes && <div className="t-mute" style={{ fontSize: 11.5, maxWidth: 320 }}>{l.notes}</div>}
                           </td>
                           <td className="t-mono t-mute t-nowrap" style={{ fontSize: 12 }}>

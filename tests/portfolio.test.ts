@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { LEASES } from '../src/data/leases'
 import { PROPERTIES } from '../src/data/properties'
 import { APOLLO_TENANTS, APOLLO_WATER_CHARGE } from '../src/data/apollo'
-import { cellAmount, collected, concessionLoss, concessionSummary, firstRate, grossPotential, hasVacated, isConveyed, isDark, isExpired, isHoldover, isMonthToMonth, lastRate, payingLately, realisedEscalationPct, rentPerSqFt, vacancyLoss, valueAtCap, walt } from '../src/lib/finance'
+import { cellAmount, collected, concessionLoss, concessionSummary, firstRate, grossPotential, hasVacated, imputedRate, isConveyed, isDark, isExpired, isHoldover, isMonthToMonth, isOnTheMarket, lastRate, payingLately, realisedEscalationPct, rentPerSqFt, vacancyLoss, valueAtCap, walt } from '../src/lib/finance'
 import { computeKpis, resolveData, valuationModel } from '../src/lib/portfolio'
 import { AVAILABLE_YEARS, CURRENT_YEAR, LATEST_YEAR, isPartYear, rentRoll, unitKey, yearLabel } from '../src/data/rentRolls'
 import { RETURN_2023, RETURN_2024 } from '../src/data/taxReturns'
@@ -920,5 +920,74 @@ describe('what counts as an expired lease', () => {
       expect(like(s), s).toBe(true)
     }
     for (const s of ['', '5YR + 5YR', '3YR', '2YR+2YR+2YR']) expect(like(s), s).toBe(false)
+  })
+})
+
+/**
+ * The four empty units at Plaza #1, priced by the owner on 1 September 2026.
+ *
+ * The sheet prints their square footage and nothing else, so their downtime was
+ * valued at nothing and the space looked free to leave empty. These are asking
+ * rents — what the space should fetch, not what anyone is paying — and the
+ * distinction is the whole point of the field.
+ */
+describe('asking rents on empty space', () => {
+  const asOf = new Date('2026-09-01T12:00:00')
+  const k = computeKpis(asOf, resolveData(undefined, 2026))
+  const p1 = k.properties.find((p) => p.property.id === 'plaza-1')!
+  const unit = (u: string) => p1.leases.find((l) => l.unit === u)!
+
+  it('records what the owner is asking for each empty unit', () => {
+    expect(unit('2F').askingRent).toBe(1_495)
+    expect(unit('RW Warehouse').askingRent).toBe(4_000)
+    expect(unit('R1').askingRent).toBe(500)
+    expect(unit('R2').askingRent).toBe(500)
+    expect(p1.askingMonthly).toBe(6_495)
+    expect(p1.unitsOnMarket).toBe(4)
+  })
+
+  it('never counts an asking rent as income', () => {
+    // The single thing that must not happen: $6,495 a month of rent nobody is
+    // paying arriving in the gross.
+    for (const u of ['2F', 'RW Warehouse', 'R1', 'R2']) {
+      expect(collected(unit(u)), u).toBe(0)
+      expect(isOnTheMarket(unit(u)), u).toBe(true)
+    }
+    expect(p1.collected).toBe(271_043)
+    expect(k.grossCollected).toBeCloseTo(1_915_271, 0)
+  })
+
+  it('values the downtime at the asking rent instead of at nothing', () => {
+    // Eight reported months standing empty, at $6,495 between them.
+    expect(p1.vacancyLoss).toBeCloseTo(8 * 6_495, 2)
+    for (const u of ['2F', 'RW Warehouse', 'R1', 'R2']) {
+      expect(imputedRate(unit(u), 0), u).toBe(unit(u).askingRent)
+    }
+  })
+
+  it('does not count the four months the sheet has not reached', () => {
+    // September to December are unreported, not vacant. Charging the landlord
+    // for downtime in months nobody has filled in would inflate the loss by half.
+    const rw = unit('RW Warehouse')
+    expect(rw.months.filter((m) => m === 'V')).toHaveLength(8)
+    expect(vacancyLoss(rw)).toBe(8 * 4_000)
+  })
+
+  it('leaves occupancy honest — the space is still empty', () => {
+    expect(k.physicalOccupancyPct).toBeLessThan(100)
+    expect(p1.unitsOnMarket).toBeGreaterThan(0)
+  })
+
+  it('adds up across the portfolio', () => {
+    expect(k.askingRentMonthly).toBe(6_495)
+    expect(k.askingRentAnnual).toBe(6_495 * 12)
+    expect(k.unitsOnMarket).toBe(4)
+  })
+
+  it('says nothing about a unit that has no asking rent', () => {
+    // A let unit is not "on the market" however its months read.
+    const let_ = p1.leases.find((l) => l.unit === '1A&B')!
+    expect(let_.askingRent).toBeUndefined()
+    expect(isOnTheMarket(let_)).toBe(false)
   })
 })

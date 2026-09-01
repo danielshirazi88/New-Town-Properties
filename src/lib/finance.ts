@@ -27,7 +27,12 @@ export const collected = (l: Lease): number => l.months.reduce<number>((a, m) =>
 /**
  * The rent a dark month would have earned, imputed from the nearest month that
  * did collect. Looks forward first (a unit re-let usually resumes at the new
- * rate), then backward. Returns 0 for a lease that never collected anything.
+ * rate), then backward.
+ *
+ * A unit that has never billed has no rate to find, and valuing its downtime at
+ * nothing makes an empty suite look costless. Where an asking rent has been
+ * recorded, that stands in — it is what the landlord believes the space is
+ * worth, which is the right basis for what standing empty is costing.
  */
 export function imputedRate(l: Lease, index: number): number {
   for (let i = index + 1; i < l.months.length; i++) {
@@ -36,8 +41,12 @@ export function imputedRate(l: Lease, index: number): number {
   for (let i = index - 1; i >= 0; i--) {
     if (!isDark(l.months[i]) && !isUnreported(l.months[i])) return cellAmount(l.months[i])
   }
-  return 0
+  return l.askingRent ?? 0
 }
+
+/** Space on the market: empty, never let this year, and priced. */
+export const isOnTheMarket = (l: Lease): boolean =>
+  l.askingRent !== undefined && collected(l) === 0
 
 /** Rent forgone across every vacant month, valued at the imputed rate. */
 export function vacancyLoss(l: Lease): number {
@@ -325,6 +334,10 @@ export interface PropertyMetrics {
   /** Area under a paying tenant. */
   leasedSquareFeet: number
   vacantSquareFeet: number
+  /** Monthly rent sought across the empty units that have been priced. */
+  askingMonthly: number
+  /** Empty units carrying an asking rent. */
+  unitsOnMarket: number
   /** Share of recorded area that is let. The honest occupancy measure. */
   occupancyBySqFtPct: number
   /** Annualised rent divided by leased area — comparable to the market. */
@@ -419,6 +432,8 @@ export function propertyMetrics(
     squareFeet: sqFt,
     leasedSquareFeet: leasedSqFt,
     vacantSquareFeet: sqFt - leasedSqFt,
+    askingMonthly: leases.reduce((a, l) => a + (isOnTheMarket(l) ? l.askingRent! : 0), 0),
+    unitsOnMarket: leases.filter(isOnTheMarket).length,
     occupancyBySqFtPct: sqFt > 0 ? (leasedSqFt / sqFt) * 100 : 0,
     rentPerSqFt: leasedSqFt > 0 ? annualisedLeasedRent / leasedSqFt : 0,
     unmeasuredUnits: measurable.filter((l) => !l.squareFeet).length,
