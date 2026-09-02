@@ -337,6 +337,16 @@ tr.is-paid:hover { background: var(--paid-dim-strong); }
 .collect-cell.due { background: var(--surface-3); border-color: var(--line-strong); color: var(--ink-2); }
 /* Not yet the 1st — billed, but nothing is owed until it falls due. */
 .collect-cell.upcoming { background: transparent; border-style: dashed; color: var(--ink-3); }
+/* Rent in, late fee still owed. The month is not finished, so it does not get to
+   look finished — the green stays, because the rent really did arrive, but a
+   marked edge and the outstanding figure say there is money still to come. */
+.collect-cell.fee-owed { border-color: var(--red); border-style: dashed; }
+.fee-flag {
+  display: inline-block; margin-left: 5px; padding: 0 4px; border-radius: 4px;
+  background: var(--red-dim-strong); color: var(--red-bright);
+  font-size: 10px; font-family: var(--mono); vertical-align: 1px;
+}
+
 /* Settled by the owner's declaration rather than a recorded payment: green, but
    outlined rather than filled, so it never passes for a payment on the books. */
 .collect-cell.paid.declared {

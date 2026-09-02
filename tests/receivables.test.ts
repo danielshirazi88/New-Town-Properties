@@ -380,12 +380,13 @@ describe("the one tenant in arrears", () => {
   const august = charges.find((c) => c.leaseId === 'mp-gottis' && c.period === '2026-08')!
   const at = (iso: string) => statusOf(august, SEEDED_PAYMENTS, new Date(`${iso}T12:00:00`), settings)
 
-  it('records half of August against the right lease and month', () => {
-    expect(SEEDED_PAYMENTS).toHaveLength(1)
-    const [p] = SEEDED_PAYMENTS
-    expect(p.leaseId).toBe('mp-gottis')
-    expect(p.period).toBe('2026-08')
-    expect(p.amount).toBe(3_850)
+  it('records both halves of August against the right lease and month', () => {
+    expect(SEEDED_PAYMENTS).toHaveLength(2)
+    for (const p of SEEDED_PAYMENTS) {
+      expect(p.leaseId).toBe('mp-gottis')
+      expect(p.period).toBe('2026-08')
+      expect(p.amount).toBe(3_850)
+    }
     expect(august.amountDue).toBe(7_700)
   })
 
@@ -400,20 +401,23 @@ describe("the one tenant in arrears", () => {
     expect(s.state).toBe('partial')
   })
 
-  it('keeps the fee running after the invoice was cut', () => {
-    // The debt does not stop growing because someone printed a total.
-    const s = at('2026-09-01')
-    expect(s.lateDays).toBe(27)
-    expect(s.lateFee).toBe(27 * LATE_FEE_PER_DAY)
-    expect(s.balance).toBe(3_850)
+  it('ignores money that had not arrived yet', () => {
+    // The balance came in on 31 August. Asked how the books stood on the 30th,
+    // the day the invoice was written, the answer must not include it.
+    expect(at('2026-08-30').paid).toBe(3_850)
+    expect(at('2026-08-30').balance).toBe(3_850)
+    expect(at('2026-08-31').paid).toBe(7_700)
   })
 
   it('charges from the sixth, not from the first', () => {
-    // Nothing accrues inside the grace period, however far into it we are.
-    expect(at('2026-08-05').lateDays).toBe(0)
-    expect(at('2026-08-05').lateFee).toBe(0)
-    expect(at('2026-08-06').lateDays).toBe(1)
+    // Read on a bare charge, because in early August the owner's declaration
+    // still covered the month and would mask the boundary entirely.
     expect(august.graceThrough.getDate()).toBe(GRACE_THROUGH_DAY)
+    const bare = (d: string) => statusOf(august, [], new Date(`${d}T12:00:00`), {})
+    expect(bare('2026-08-05').lateDays).toBe(0)
+    expect(bare('2026-08-05').lateFee).toBe(0)
+    expect(bare('2026-08-06').lateDays).toBe(1)
+    expect(bare('2026-08-06').lateFee).toBe(LATE_FEE_PER_DAY)
   })
 
   it('overrides the settled-through declaration for this month alone', () => {
@@ -436,13 +440,43 @@ describe("the one tenant in arrears", () => {
   })
 
   it('leaves Gotti as the only tenant carrying a late fee', () => {
-    const asOf = new Date('2026-09-01T12:00:00')
+    const asOf = new Date('2026-09-02T12:00:00')
     const owing = charges
       .map((c) => statusOf(c, SEEDED_PAYMENTS, asOf, settings))
       .filter((s) => s.lateFee > 0)
     expect(owing).toHaveLength(1)
     expect(owing[0].charge.leaseId).toBe('mp-gottis')
-    expect(owing.reduce((a, s) => a + s.lateFee, 0)).toBe(405)
+    expect(owing.reduce((a, s) => a + s.lateFee, 0)).toBe(390)
+    // Settled, so it stops there rather than running on.
+    expect(owing[0].balance).toBe(0)
+  })
+
+  it('settles August, and the fee stops where the owner says it did', () => {
+    // He says $390 is still owed. At $15 a day that is 26 days past grace,
+    // which puts the balance in on the 31st — the same convention his own
+    // invoice used on the 30th, where 25 days came to $375.
+    const s = at('2026-09-02')
+    expect(s.paid).toBe(7_700)
+    expect(s.balance).toBe(0)
+    expect(s.state).toBe('paid')
+    expect(s.settledOn?.toISOString().slice(0, 10)).toBe('2026-08-31')
+    expect(s.lateDays).toBe(26)
+    expect(s.lateFee).toBe(390)
+  })
+
+  it('does not let a settled fee keep growing as the days pass', () => {
+    // A month that is done is done. Reading it a week later must give the
+    // same answer.
+    expect(at('2026-09-09').lateFee).toBe(390)
+    expect(at('2026-10-01').lateFee).toBe(390)
+  })
+
+  it('shows the fee as owed until somebody records it as collected', () => {
+    // The rent is in and the fee is not. Those are different debts and the
+    // month is not finished just because the larger one cleared.
+    const s = at('2026-09-02')
+    expect(s.lateFeePaid).toBe(0)
+    expect(s.lateFeeOutstanding).toBe(390)
   })
 
   it('does not call one late month a chronic payer', () => {
@@ -452,11 +486,12 @@ describe("the one tenant in arrears", () => {
     // tenant of six years on "late most months" from a single invoice.
     const [gotti] = payerRecordsFor(
       charges.filter((c) => c.leaseId === 'mp-gottis'),
-      SEEDED_PAYMENTS, new Date('2026-09-01T12:00:00'), settings,
+      SEEDED_PAYMENTS, new Date('2026-09-02T12:00:00'), settings,
     )
-    expect(gotti.chargesSettled).toBe(0)
+    // One month has settled with a date behind it now, and it was late — so a
+    // rate does exist, and it is 0%. One sample is still not a record.
+    expect(gotti.chargesSettled).toBe(1)
     expect(gotti.monthsLate).toBe(1)
-    expect(gotti.onTimeRatePct).toBe(0)
   })
 
   it('has September due but not yet late for everyone', () => {
@@ -540,5 +575,69 @@ describe('seeding payments into a ledger', () => {
     // The bug in one line: a default carrying the version is a default that
     // claims the work is done before it has been.
     expect(DEFAULT_COLLECTION.paymentSeedVersion).toBeUndefined()
+  })
+})
+
+/**
+ * Late fees used only ever to accrue: there was nowhere in the ledger to say a
+ * tenant had actually paid one, so a fee collected still read as owed forever.
+ */
+describe('collecting a late fee', () => {
+  const charge = janCharge()
+  const asOf = new Date('2026-02-01T12:00:00')
+
+  it('records a fee paid alongside the rent without overpaying the rent', () => {
+    // The fee is kept out of `amount`, which settles the rent charge — a single
+    // figure covering both would read as an overpayment and leave the fee owed.
+    const s = statusOf(charge, [
+      pay({ amount: 1000, paidOn: '2026-01-20', lateFeeCollected: 225 }),
+    ], asOf, {})
+    expect(s.balance).toBe(0)
+    expect(s.lateDays).toBe(15)
+    expect(s.lateFee).toBe(225)
+    expect(s.lateFeePaid).toBe(225)
+    expect(s.lateFeeOutstanding).toBe(0)
+  })
+
+  it('leaves the remainder owed when only part of the fee comes in', () => {
+    const s = statusOf(charge, [
+      pay({ amount: 1000, paidOn: '2026-01-20', lateFeeCollected: 100 }),
+    ], asOf, {})
+    expect(s.lateFee).toBe(225)
+    expect(s.lateFeePaid).toBe(100)
+    expect(s.lateFeeOutstanding).toBe(125)
+  })
+
+  it('adds up fees collected across several payments', () => {
+    const s = statusOf(charge, [
+      pay({ id: 'a', amount: 500, paidOn: '2026-01-10', lateFeeCollected: 50 }),
+      pay({ id: 'b', amount: 500, paidOn: '2026-01-20', lateFeeCollected: 175 }),
+    ], asOf, {})
+    expect(s.lateFeePaid).toBe(225)
+    expect(s.lateFeeOutstanding).toBe(0)
+  })
+
+  it('owes nothing on a waived month, whatever was collected', () => {
+    const s = statusOf(charge, [
+      pay({ amount: 1000, paidOn: '2026-01-20', waiveLateFee: true }),
+    ], asOf, {})
+    expect(s.lateFee).toBe(0)
+    expect(s.lateFeeOutstanding).toBe(0)
+    expect(s.lateFeeWaived).toBe(true)
+  })
+
+  it('never reports a negative balance when more fee comes in than was charged', () => {
+    const s = statusOf(charge, [
+      pay({ amount: 1000, paidOn: '2026-01-20', lateFeeCollected: 400 }),
+    ], asOf, {})
+    expect(s.lateFeeOutstanding).toBe(0)
+  })
+
+  it('carries no fee at all on a month settled by declaration', () => {
+    const s = statusOf(charge, [], asOf, { settledThrough: '2026-01' })
+    expect(s.settledByDeclaration).toBe(true)
+    expect(s.lateFee).toBe(0)
+    expect(s.lateFeePaid).toBe(0)
+    expect(s.lateFeeOutstanding).toBe(0)
   })
 })

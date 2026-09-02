@@ -289,7 +289,14 @@ export function SlowPayers({
                       <td className="num">{r.chargesSettled ? pct(r.onTimeRatePct, 0) : '—'}</td>
                       <td className="num">{r.monthsLate || '—'}</td>
                       <td className="num">{r.balance > 0.005 ? money(r.balance) : '—'}</td>
-                      <td className="num">{r.totalLateFees > 0 ? money(r.totalLateFees) : '—'}</td>
+                      <td className="num">
+                        {r.totalLateFees > 0 ? money(r.totalLateFees) : '—'}
+                        {r.lateFeesOutstanding > 0 && (
+                          <div className="t-red" style={{ fontSize: 11 }}>
+                            {money(r.lateFeesOutstanding)} still owed
+                          </div>
+                        )}
+                      </td>
                       <td>
                         <span className={`badge ${tier.cls}`}>{tier.label}</span>
                         {r.chargesSettled === 0 && r.chargesOpen > 0 && (

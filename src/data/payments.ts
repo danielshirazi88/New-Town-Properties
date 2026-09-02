@@ -8,11 +8,11 @@ import type { Payment } from '../lib/receivables'
  * overridden wherever an actual payment exists for a charge, so a month that
  * really was short reads as short instead of being waved through as clean.
  *
- * This file is what does the overriding. One entry so far.
+ * This file is what does the overriding.
  */
 
 /** Bumped whenever entries are added, so a saved ledger picks them up once. */
-export const PAYMENT_SEED_VERSION = 1
+export const PAYMENT_SEED_VERSION = 2
 
 export const SEEDED_PAYMENTS: Payment[] = [
   {
@@ -30,5 +30,21 @@ export const SEEDED_PAYMENTS: Payment[] = [
       + 'from 6 August — for $4,225 due.',
     recordedBy: 'Final invoice 30 Aug 2026',
     recordedAt: '2026-08-30T00:00:00.000Z',
+  },
+  {
+    id: 'pay-gottis-2026-08-balance',
+    leaseId: 'mp-gottis',
+    period: '2026-08',
+    amount: 3850,
+    // The date is fixed by the fee. The owner says $390 is still owed, and at
+    // $15 a day that is 26 days past grace, which puts the money in on the 31st
+    // — the same convention his own invoice used on the 30th, where 25 days
+    // came to $375. The fee stops the day the balance clears.
+    paidOn: '2026-08-31',
+    note: 'The balance of August. Settles the month 26 days past grace, leaving $390 of '
+      + 'late fees outstanding — which the owner expects a few days behind the rent, as usual '
+      + 'with this tenant.',
+    recordedBy: 'Reported by the owner, 2 September 2026',
+    recordedAt: '2026-09-02T00:00:00.000Z',
   },
 ]

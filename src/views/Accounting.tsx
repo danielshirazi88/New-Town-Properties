@@ -76,6 +76,10 @@ export function Accounting({
   const collected = due.reduce((a, s) => a + s.paid, 0)
   const outstanding = due.reduce((a, s) => a + s.balance, 0)
   const lateFees = statuses.reduce((a, s) => a + s.lateFee, 0)
+  // A fee charged and a fee collected are different questions, and the second
+  // is the one with money still to come in behind it.
+  const feeMonths = statuses.filter((s) => s.lateFeeOutstanding > 0)
+  const feesOwed = feeMonths.reduce((a, s) => a + s.lateFeeOutstanding, 0)
   const settled = due.filter((s) => s.state === 'paid').length
 
   // Billed and collected side by side, month by month.
@@ -168,7 +172,15 @@ export function Accounting({
             ? `${num(due.filter((s) => s.balance > 0.005).length)} months unsettled`
             : 'Every month that has come due is settled'} />
         <Kpi label="Late fees accrued" value={money(lateFees)} warn={lateFees > 0}
-          note={`${num(statuses.filter((s) => s.lateDays > 0).length)} months past grace`} />
+          note={(() => {
+            const n = statuses.filter((s) => s.lateDays > 0).length
+            return `${num(n)} ${n === 1 ? 'month' : 'months'} past grace`
+          })()} />
+        <Kpi label="Late fees still owed" value={money(feesOwed)} warn={feesOwed > 0}
+          note={feesOwed > 0
+            ? `${num(feeMonths.length)} ${feeMonths.length === 1 ? 'month where' : 'months where'} `
+              + 'the rent is in and the fee is not'
+            : 'Every fee charged has been collected or waived'} />
         <Kpi label="Months settled" value={`${num(settled)} of ${num(due.length)}`}
           note="Of those that have fallen due" />
         <Kpi label="Not yet due" value={money(upcoming.reduce((a, s) => a + s.charge.amountDue, 0))}
@@ -282,10 +294,13 @@ export function Accounting({
                       return (
                         <td key={month}>
                           <button
-                            className={`collect-cell ${s.state}${s.settledByDeclaration ? ' declared' : ''}`}
+                            className={`collect-cell ${s.state}${s.settledByDeclaration ? ' declared' : ''}`
+                              + `${s.lateFeeOutstanding > 0 ? ' fee-owed' : ''}`}
                             title={[
                               `${MONTH_NAMES[month]}: ${money(s.charge.amountDue)} due, ${money(s.paid)} paid`,
-                              s.lateFee > 0 ? `${money(s.lateFee)} late fee` : '',
+                              s.lateFeeOutstanding > 0
+                                ? `${money(s.lateFeeOutstanding)} of late fee still owed`
+                                : s.lateFee > 0 ? `${money(s.lateFee)} late fee, collected` : '',
                               s.settledByDeclaration
                                 ? `Settled by declaration through ${settings.settledThrough} — click to record the actual payment`
                                 : '',
@@ -297,6 +312,9 @@ export function Accounting({
                           >
                             {glyph(s.state)} {Math.round(s.state === 'paid' ? s.paid : s.balance).toLocaleString()}
                             {s.charge.projected && <span aria-hidden> ~</span>}
+                            {s.lateFeeOutstanding > 0 && (
+                              <span className="fee-flag" aria-hidden>+{Math.round(s.lateFeeOutstanding)}</span>
+                            )}
                           </button>
                         </td>
                       )
@@ -430,27 +448,49 @@ function RecordPayment({
   onClose: () => void
 }) {
   const today = new Date().toISOString().slice(0, 10)
-  const [amount, setAmount] = useState(String(status.balance > 0 ? status.balance : charge.amountDue))
+  const [amount, setAmount] = useState(status.balance > 0 ? String(status.balance) : '')
   const [paidOn, setPaidOn] = useState(today)
   const [method, setMethod] = useState<PaymentMethodId | ''>(suggestedMethod ?? '')
   const [customLabel, setCustomLabel] = useState('')
   const [reference, setReference] = useState('')
   const [note, setNote] = useState('')
   const [waive, setWaive] = useState(false)
+  const [feeCollected, setFeeCollected] = useState('')
 
-  // What the fee would be if the money landed on the date entered.
+  // Everything recalculates from the date typed in, because that is the one
+  // fact the person recording a payment actually knows. Days past grace, the
+  // fee those days come to, and the total to collect all move with it.
   const preview = useMemo(() => {
     const paid = new Date(`${paidOn}T00:00:00`)
-    const days = Math.max(0, Math.floor(
+    const days = Number.isNaN(paid.getTime()) ? 0 : Math.max(0, Math.floor(
       (new Date(paid.getFullYear(), paid.getMonth(), paid.getDate()).getTime()
         - new Date(charge.graceThrough.getFullYear(), charge.graceThrough.getMonth(), charge.graceThrough.getDate()).getTime())
       / 86_400_000))
-    return { days, fee: days * LATE_FEE_PER_DAY }
-  }, [paidOn, charge])
+    // Once the rent has cleared the fee is history, not a projection: it stopped
+    // the day the balance did. Typing a later date must not make it grow again.
+    const settled = status.balance <= 0.005
+    const runDays = settled ? status.lateDays : days
+    const fee = waive ? 0 : runDays * LATE_FEE_PER_DAY
+    const owing = Math.max(0, fee - status.lateFeePaid)
+    return {
+      days: runDays,
+      settled,
+      fee,
+      feeOwing: owing,
+      rentOwing: status.balance,
+      total: status.balance + owing,
+    }
+  }, [paidOn, charge, waive, status.balance, status.lateDays, status.lateFeePaid])
 
   const submit = () => {
-    const value = Number.parseFloat(amount.replace(/[$,]/g, ''))
-    if (!Number.isFinite(value) || value <= 0) { alert('Enter an amount greater than zero.'); return }
+    const value = Number.parseFloat(amount.replace(/[$,]/g, '')) || 0
+    const fee = Number.parseFloat(feeCollected.replace(/[$,]/g, '')) || 0
+    // A fee paid on its own is a real thing to record, so an empty rent amount
+    // is only an error when there is no fee either.
+    if (value <= 0 && fee <= 0) {
+      alert('Enter a rent amount or a late fee greater than zero.')
+      return
+    }
     onSave({
       id: newId(),
       leaseId: charge.leaseId,
@@ -462,6 +502,7 @@ function RecordPayment({
       reference: reference.trim() || undefined,
       note: note.trim() || undefined,
       waiveLateFee: waive || undefined,
+      lateFeeCollected: fee > 0 ? fee : undefined,
       recordedBy: localStorage.getItem('ntp.editor') ?? undefined,
       recordedAt: new Date().toISOString(),
     })
@@ -512,23 +553,93 @@ function RecordPayment({
           </label>
         </div>
 
-        <div className={`callout${preview.days > 0 ? '' : ' neutral'}`} style={{ marginTop: 16, marginBottom: 0 }}>
+        {/* The whole point of this panel: type the date the money arrived and
+            read off what is owed. Nobody should be counting days on a calendar
+            or multiplying by fifteen in their head. */}
+        <div className={`callout${preview.days > 0 && !waive ? '' : ' neutral'}`}
+          style={{ marginTop: 16, marginBottom: 0 }}>
           <div className="callout-title">
-            {preview.days === 0
-              ? 'Within the grace period — no late fee'
-              : `${preview.days} day${preview.days === 1 ? '' : 's'} past grace — ${money(preview.fee)} late fee`}
+            {waive ? 'Late fee waived'
+              : preview.days === 0 ? 'Paid within grace — no late fee'
+                : preview.settled
+                  ? `Settled ${preview.days} days past grace`
+                  : `${preview.days} day${preview.days === 1 ? '' : 's'} past grace and counting`}
           </div>
-          <p>
-            Rent fell due {charge.dueDate.toLocaleDateString()} with grace through{' '}
-            {charge.graceThrough.toLocaleDateString()}.
-            {preview.days > 0 && ` At ${money(LATE_FEE_PER_DAY)} a day that comes to ${money(preview.fee)}.`}
-          </p>
-          {preview.days > 0 && (
-            <label className="row" style={{ gap: 7, marginTop: 8, fontSize: 13 }}>
-              <input type="checkbox" checked={waive} onChange={(e) => setWaive(e.target.checked)} style={{ minWidth: 'auto' }} />
-              Waive the late fee for this month
+
+          <div className="table-wrap" style={{ border: 0, marginTop: 4 }}>
+            <table>
+              <tbody>
+                <tr>
+                  <td>Rent outstanding</td>
+                  <td className="num t-strong">{money(preview.rentOwing)}</td>
+                </tr>
+                <tr>
+                  <td>
+                    Late fee
+                    <span className="t-mute" style={{ fontSize: 11.5 }}>
+                      {' '}· {money(LATE_FEE_PER_DAY)} a day from{' '}
+                      {new Date(charge.graceThrough.getTime() + 86_400_000)
+                        .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {preview.days > 0 && !waive
+                        && ` · ${preview.days} × ${money(LATE_FEE_PER_DAY)}`}
+                    </span>
+                  </td>
+                  <td className={`num t-strong ${preview.feeOwing > 0 ? 't-red' : 't-mute'}`}>
+                    {money(preview.feeOwing)}
+                  </td>
+                </tr>
+                {status.lateFeePaid > 0 && (
+                  <tr>
+                    <td className="t-mute">Late fee already collected</td>
+                    <td className="num t-mute">− {money(status.lateFeePaid)}</td>
+                  </tr>
+                )}
+                <tr>
+                  <td className="label">Total to collect</td>
+                  <td className="num t-strong">{money(preview.total)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            {preview.rentOwing > 0 && (
+              <button className="btn ghost sm" type="button"
+                onClick={() => { setAmount(String(preview.rentOwing)); setFeeCollected('') }}>
+                Rent only — {money(preview.rentOwing)}
+              </button>
+            )}
+            {preview.feeOwing > 0 && (
+              <button className="btn ghost sm" type="button"
+                onClick={() => {
+                  setAmount(String(preview.rentOwing))
+                  setFeeCollected(String(preview.feeOwing))
+                }}>
+                {preview.rentOwing > 0
+                  ? `Rent and fee — ${money(preview.total)}`
+                  : `Fee only — ${money(preview.feeOwing)}`}
+              </button>
+            )}
+          </div>
+
+          <div className="form-grid" style={{ marginTop: 12 }}>
+            <label className="field">
+              <span>Late fee collected</span>
+              <input type="number" step="0.01" value={feeCollected} placeholder="0.00"
+                onChange={(e) => setFeeCollected(e.target.value)} />
             </label>
-          )}
+            <label className="row" style={{ gap: 7, fontSize: 13, alignItems: 'center' }}>
+              <input type="checkbox" checked={waive} style={{ minWidth: 'auto' }}
+                onChange={(e) => { setWaive(e.target.checked); if (e.target.checked) setFeeCollected('') }} />
+              Waive the fee for this month
+            </label>
+          </div>
+
+          <p className="t-mute" style={{ fontSize: 12, marginTop: 8 }}>
+            Rent fell due {charge.dueDate.toLocaleDateString()} with grace through{' '}
+            {charge.graceThrough.toLocaleDateString()}. The fee keeps running until the rent
+            balance clears, so it is worked out from the date above rather than from today.
+          </p>
         </div>
 
         {status.payments.length > 0 && (

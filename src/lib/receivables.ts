@@ -30,6 +30,15 @@ export interface Payment {
   note?: string
   /** True when the landlord has waived the late fee on this month. */
   waiveLateFee?: boolean
+  /**
+   * Late fee collected alongside the rent, where the tenant paid it.
+   *
+   * Kept apart from `amount`, which settles the rent charge: a payment that
+   * covered both would otherwise look like an overpayment of rent and leave the
+   * fee reading as still owed. Until this existed a late fee could only ever
+   * accrue — there was nowhere to say it had been paid.
+   */
+  lateFeeCollected?: number
   recordedBy?: string
   recordedAt: string
 }
@@ -158,7 +167,12 @@ export interface ChargeStatus {
   daysToPay?: number
   /** Days past the grace period. Accrues to today while a balance is open. */
   lateDays: number
+  /** What the fee comes to, before anything paid against it. */
   lateFee: number
+  /** How much of that fee has actually been collected. */
+  lateFeePaid: number
+  /** Fee still owed: what it comes to, less what came in. Zero when waived. */
+  lateFeeOutstanding: number
   lateFeeWaived: boolean
   /** The date the balance reached zero, if it has. */
   settledOn?: Date
@@ -190,8 +204,13 @@ export function statusOf(
   asOf: Date = new Date(),
   settings: CollectionSettings = {},
 ): ChargeStatus {
+  // Money that had not arrived yet cannot settle a month. Reading the books as
+  // at a date means as at that date: a payment dated afterwards is invisible,
+  // so a past month reads the way it actually read at the time.
+  const asOfDay = `${asOf.getFullYear()}-${String(asOf.getMonth() + 1).padStart(2, '0')}-${String(asOf.getDate()).padStart(2, '0')}`
   const mine = payments
     .filter((p) => p.leaseId === charge.leaseId && p.period === charge.period)
+    .filter((p) => p.paidOn <= asOfDay)
     .sort((a, b) => a.paidOn.localeCompare(b.paidOn))
 
   const paid = mine.reduce((a, p) => a + p.amount, 0)
@@ -228,6 +247,8 @@ export function statusOf(
       daysToPay: undefined,
       lateDays: 0,
       lateFee: 0,
+      lateFeePaid: 0,
+      lateFeeOutstanding: 0,
       lateFeeWaived: false,
       settledOn: undefined,
       asOf,
@@ -241,6 +262,9 @@ export function statusOf(
   const lateDays = balance > 0.005 || settledOn
     ? Math.max(0, wholeDaysBetween(charge.graceThrough, lateFrom))
     : 0
+
+  const fee = waived ? 0 : lateDays * LATE_FEE_PER_DAY
+  const feePaid = mine.reduce((a, p) => a + (p.lateFeeCollected ?? 0), 0)
 
   const state: ChargeState =
     balance <= 0.005 ? 'paid'
@@ -257,7 +281,9 @@ export function statusOf(
     state,
     daysToPay: settledOn ? wholeDaysBetween(charge.dueDate, settledOn) : undefined,
     lateDays,
-    lateFee: waived ? 0 : lateDays * LATE_FEE_PER_DAY,
+    lateFee: fee,
+    lateFeePaid: feePaid,
+    lateFeeOutstanding: Math.max(0, fee - feePaid),
     lateFeeWaived: waived,
     settledOn,
     asOf,
@@ -297,6 +323,8 @@ export interface PayerRecord {
   onTimeRatePct: number
   monthsLate: number
   totalLateFees: number
+  /** Of those fees, how much is still to come in. */
+  lateFeesOutstanding: number
   totalBilled: number
   totalPaid: number
   balance: number
@@ -363,6 +391,7 @@ export function payerRecordsFor(
       onTimeRatePct,
       monthsLate,
       totalLateFees: statuses.reduce((a, s) => a + s.lateFee, 0),
+      lateFeesOutstanding: statuses.reduce((a, s) => a + s.lateFeeOutstanding, 0),
       totalBilled: list.reduce((a, c) => a + c.amountDue, 0),
       totalPaid: statuses.reduce((a, s) => a + s.paid, 0),
       balance: statuses.reduce((a, s) => a + (s.isDue ? s.balance : 0), 0),
