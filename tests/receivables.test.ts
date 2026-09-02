@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_COLLECTION, GRACE_THROUGH_DAY, LATE_FEE_PER_DAY, agingOf, chargesForLease,
-  payerRecordsFor, periodOf, seedPayments, statusOf, trackedCharges,
-  type CollectionSettings, type Payment, type RentCharge,
+  cappedLateDays, payerRecordsFor, periodOf, seedPayments, statusOf, trackedCharges,
+  type CollectionSettings, type LateFeeCap, type Payment, type RentCharge,
 } from '../src/lib/receivables'
 import type { Lease } from '../src/lib/types'
 import { PAYMENT_SEED_VERSION, SEEDED_PAYMENTS } from '../src/data/payments'
@@ -446,29 +446,31 @@ describe("the one tenant in arrears", () => {
       .filter((s) => s.lateFee > 0)
     expect(owing).toHaveLength(1)
     expect(owing[0].charge.leaseId).toBe('mp-gottis')
-    expect(owing.reduce((a, s) => a + s.lateFee, 0)).toBe(390)
+    expect(owing.reduce((a, s) => a + s.lateFee, 0)).toBe(375)
     // Settled, so it stops there rather than running on.
     expect(owing[0].balance).toBe(0)
   })
 
-  it('settles August, and the fee stops where the owner says it did', () => {
-    // He says $390 is still owed. At $15 a day that is 26 days past grace,
-    // which puts the balance in on the 31st — the same convention his own
-    // invoice used on the 30th, where 25 days came to $375.
+  it('settles August, and stops the fee where the owner stops it', () => {
+    // The money ran 26 days past grace. He charges 25 — "$375.00 where I stop
+    // it" — so the extra day is not billed, and the figure matches the total
+    // his own invoice reached.
     const s = at('2026-09-02')
     expect(s.paid).toBe(7_700)
     expect(s.balance).toBe(0)
     expect(s.state).toBe('paid')
     expect(s.settledOn?.toISOString().slice(0, 10)).toBe('2026-08-31')
     expect(s.lateDays).toBe(26)
-    expect(s.lateFee).toBe(390)
+    expect(s.chargeableDays).toBe(25)
+    expect(s.lateFeeCapped).toBe(true)
+    expect(s.lateFee).toBe(375)
   })
 
   it('does not let a settled fee keep growing as the days pass', () => {
     // A month that is done is done. Reading it a week later must give the
     // same answer.
-    expect(at('2026-09-09').lateFee).toBe(390)
-    expect(at('2026-10-01').lateFee).toBe(390)
+    expect(at('2026-09-09').lateFee).toBe(375)
+    expect(at('2026-10-01').lateFee).toBe(375)
   })
 
   it('shows the fee as owed until somebody records it as collected', () => {
@@ -476,7 +478,7 @@ describe("the one tenant in arrears", () => {
     // month is not finished just because the larger one cleared.
     const s = at('2026-09-02')
     expect(s.lateFeePaid).toBe(0)
-    expect(s.lateFeeOutstanding).toBe(390)
+    expect(s.lateFeeOutstanding).toBe(375)
   })
 
   it('does not call one late month a chronic payer', () => {
@@ -639,5 +641,67 @@ describe('collecting a late fee', () => {
     expect(s.lateFee).toBe(0)
     expect(s.lateFeePaid).toBe(0)
     expect(s.lateFeeOutstanding).toBe(0)
+  })
+})
+
+/**
+ * Where the fee stops running.
+ *
+ * "I usually don't let anyone go past the last day of the month and 25 days
+ * after the 5th is $375.00 where I stop it" — the owner. Two rules that agree
+ * in a thirty-day month and part company in a thirty-one-day one, so both are
+ * available and the one he put a figure on is the default.
+ */
+describe('the late fee cap', () => {
+  const charge = (year: number, month: number): RentCharge =>
+    ({ ...janCharge(), year, month, graceThrough: new Date(year, month, GRACE_THROUGH_DAY),
+      dueDate: new Date(year, month, 1), period: `${year}-${String(month + 1).padStart(2, '0')}` })
+  const feeAt = (c: RentCharge, asOf: string, cap?: LateFeeCap) =>
+    statusOf(c, [], new Date(`${asOf}T12:00:00`), cap ? { lateFeeCap: cap } : {})
+
+  it('stops at 25 days and $375 by default', () => {
+    const aug = charge(2026, 7)
+    expect(feeAt(aug, '2026-08-30').lateFee).toBe(375)
+    expect(feeAt(aug, '2026-09-30').lateFee).toBe(375)
+    expect(feeAt(aug, '2027-06-01').lateFee).toBe(375)
+  })
+
+  it('accrues normally right up to the cap', () => {
+    const aug = charge(2026, 7)
+    expect(feeAt(aug, '2026-08-06').lateFee).toBe(15)
+    expect(feeAt(aug, '2026-08-29').lateFee).toBe(360)
+    expect(feeAt(aug, '2026-08-30').chargeableDays).toBe(25)
+    expect(feeAt(aug, '2026-08-29').lateFeeCapped).toBe(false)
+    expect(feeAt(aug, '2026-08-31').lateFeeCapped).toBe(true)
+  })
+
+  it('follows the month instead, where that is the rule chosen', () => {
+    // Same money, different answer, which is why it is a setting.
+    const monthEnd: LateFeeCap = { mode: 'month-end' }
+    expect(feeAt(charge(2026, 7), '2026-09-30', monthEnd).lateFee).toBe(390)  // 31-day
+    expect(feeAt(charge(2026, 3), '2026-09-30', monthEnd).lateFee).toBe(375)  // 30-day
+    expect(feeAt(charge(2026, 1), '2026-09-30', monthEnd).lateFee).toBe(345)  // February
+  })
+
+  it('runs uncapped where nothing is meant to stop it', () => {
+    const s = feeAt(charge(2026, 7), '2026-12-31', { mode: 'none' })
+    expect(s.lateDays).toBe(148)
+    expect(s.lateFee).toBe(148 * LATE_FEE_PER_DAY)
+    expect(s.lateFeeCapped).toBe(false)
+  })
+
+  it('is not a waiver — a waived month owes nothing at all', () => {
+    // The cap is the standing rule for everyone; a waiver is discretion on one
+    // month, and they are recorded in different places.
+    const waived = statusOf(charge(2026, 7),
+      [pay({ amount: 1, paidOn: '2026-08-30', period: '2026-08', waiveLateFee: true })],
+      new Date('2026-09-30T12:00:00'), {})
+    expect(waived.lateFee).toBe(0)
+    expect(waived.lateFeeWaived).toBe(true)
+  })
+
+  it('charges nothing while the money is still inside grace', () => {
+    expect(cappedLateDays(0, { year: 2026, month: 7 })).toBe(0)
+    expect(cappedLateDays(-3, { year: 2026, month: 7 })).toBe(0)
   })
 })

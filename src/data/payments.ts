@@ -36,14 +36,13 @@ export const SEEDED_PAYMENTS: Payment[] = [
     leaseId: 'mp-gottis',
     period: '2026-08',
     amount: 3850,
-    // The date is fixed by the fee. The owner says $390 is still owed, and at
-    // $15 a day that is 26 days past grace, which puts the money in on the 31st
-    // — the same convention his own invoice used on the 30th, where 25 days
-    // came to $375. The fee stops the day the balance clears.
+    // The money was outstanding 26 days past grace, but the fee is capped at 25
+    // — "$375.00 where I stop it" — so the extra day is not charged. The same
+    // figure his own invoice reached on the 30th.
     paidOn: '2026-08-31',
-    note: 'The balance of August. Settles the month 26 days past grace, leaving $390 of '
-      + 'late fees outstanding — which the owner expects a few days behind the rent, as usual '
-      + 'with this tenant.',
+    note: 'The balance of August, 26 days past grace. The fee stops at the 25-day cap, so '
+      + '$375 is outstanding rather than $390 — which the owner expects a few days behind '
+      + 'the rent, as usual with this tenant.',
     recordedBy: 'Reported by the owner, 2 September 2026',
     recordedAt: '2026-09-02T00:00:00.000Z',
   },

@@ -4,8 +4,9 @@ import { MonthlyAreaChart } from '../components/charts'
 import { money, num, pct } from '../lib/format'
 import { MONTHS } from '../lib/finance'
 import {
-  GRACE_THROUGH_DAY, LATE_FEE_PER_DAY, MONTH_NAMES, chargesForYear, inTrackingWindow, statusOf,
-  trackedCharges, type ChargeStatus, type CollectionSettings, type Payment, type RentCharge,
+  DEFAULT_LATE_FEE_CAP, GRACE_THROUGH_DAY, LATE_FEE_PER_DAY, MONTH_NAMES, cappedLateDays,
+  chargesForYear, inTrackingWindow, statusOf, trackedCharges,
+  type ChargeStatus, type CollectionSettings, type LateFeeCap, type Payment, type RentCharge,
 } from '../lib/receivables'
 import { PAYMENT_METHODS, methodLabel, resolveProfile, type PaymentMethodId, type TenantProfiles } from '../lib/tenants'
 import type { PortfolioKpis } from '../lib/portfolio'
@@ -428,6 +429,7 @@ export function Accounting({
           charge={recording.charge}
           status={recording.status}
           suggestedMethod={resolveProfile(recording.charge.leaseId, [], profiles).preferredPayment}
+          cap={settings.lateFeeCap ?? DEFAULT_LATE_FEE_CAP}
           onSave={savePayment}
           onDelete={deletePayment}
           onClose={() => setRecording(null)}
@@ -438,11 +440,13 @@ export function Accounting({
 }
 
 function RecordPayment({
-  charge, status, suggestedMethod, onSave, onDelete, onClose,
+  charge, status, suggestedMethod, cap, onSave, onDelete, onClose,
 }: {
   charge: RentCharge
   status: ChargeStatus
   suggestedMethod?: PaymentMethodId
+  /** Where the landlord stops the fee, so the dialog quotes what he charges. */
+  cap: LateFeeCap
   onSave: (p: Payment) => void
   onDelete: (id: string) => void
   onClose: () => void
@@ -470,17 +474,22 @@ function RecordPayment({
     // the day the balance did. Typing a later date must not make it grow again.
     const settled = status.balance <= 0.005
     const runDays = settled ? status.lateDays : days
-    const fee = waive ? 0 : runDays * LATE_FEE_PER_DAY
+    // The landlord's standing cap, so the figure here is what he would actually
+    // charge rather than what the days multiply out to.
+    const charged = cappedLateDays(runDays, charge, cap)
+    const fee = waive ? 0 : charged * LATE_FEE_PER_DAY
     const owing = Math.max(0, fee - status.lateFeePaid)
     return {
       days: runDays,
+      charged,
+      capped: charged < runDays,
       settled,
       fee,
       feeOwing: owing,
       rentOwing: status.balance,
       total: status.balance + owing,
     }
-  }, [paidOn, charge, waive, status.balance, status.lateDays, status.lateFeePaid])
+  }, [paidOn, charge, waive, cap, status.balance, status.lateDays, status.lateFeePaid])
 
   const submit = () => {
     const value = Number.parseFloat(amount.replace(/[$,]/g, '')) || 0
@@ -580,9 +589,14 @@ function RecordPayment({
                       {' '}· {money(LATE_FEE_PER_DAY)} a day from{' '}
                       {new Date(charge.graceThrough.getTime() + 86_400_000)
                         .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      {preview.days > 0 && !waive
-                        && ` · ${preview.days} × ${money(LATE_FEE_PER_DAY)}`}
+                      {preview.charged > 0 && !waive
+                        && ` · ${preview.charged} × ${money(LATE_FEE_PER_DAY)}`}
                     </span>
+                    {preview.capped && !waive && (
+                      <div className="t-mute" style={{ fontSize: 11.5 }}>
+                        Ran {preview.days} days; charged {preview.charged}, where the fee stops.
+                      </div>
+                    )}
                   </td>
                   <td className={`num t-strong ${preview.feeOwing > 0 ? 't-red' : 't-mute'}`}>
                     {money(preview.feeOwing)}
@@ -637,8 +651,11 @@ function RecordPayment({
 
           <p className="t-mute" style={{ fontSize: 12, marginTop: 8 }}>
             Rent fell due {charge.dueDate.toLocaleDateString()} with grace through{' '}
-            {charge.graceThrough.toLocaleDateString()}. The fee keeps running until the rent
-            balance clears, so it is worked out from the date above rather than from today.
+            {charge.graceThrough.toLocaleDateString()}. The fee runs from the date above until
+            the rent clears
+            {cap.mode === 'days' && `, and stops at ${cap.days ?? 25} days — ${money((cap.days ?? 25) * LATE_FEE_PER_DAY)}`}
+            {cap.mode === 'month-end' && ', and stops at the last day of the month'}
+            .
           </p>
         </div>
 

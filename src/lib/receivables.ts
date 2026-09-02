@@ -16,6 +16,47 @@ export const RENT_DUE_DAY = 1
 export const GRACE_THROUGH_DAY = 5
 export const LATE_FEE_PER_DAY = 15
 
+/**
+ * Where the late fee stops running.
+ *
+ * The landlord does not let a fee accrue forever. In his words: "I usually
+ * don't let anyone go past the last day of the month, and 25 days after the 5th
+ * is $375.00 where I stop it." Those are two rules that agree in a thirty-day
+ * month and differ by a day in a thirty-one-day one, so which is meant is a
+ * setting rather than a guess:
+ *
+ *  - `days` — a flat ceiling, 25 days at $15 for $375 whatever the month.
+ *  - `month-end` — runs to the last day of the month it was billed for: $375 in
+ *    a thirty-day month, $390 in a thirty-one-day one, $345 in February.
+ *  - `none` — accrues until the balance clears, which is what the lease says
+ *    and what the app did before he explained his practice.
+ *
+ * A cap is not a waiver. The waiver is discretion exercised on one month and is
+ * recorded on that payment; this is the standing rule and applies to everyone.
+ */
+export type LateFeeCapMode = 'days' | 'month-end' | 'none'
+
+export interface LateFeeCap {
+  mode: LateFeeCapMode
+  /** Ceiling in days past grace. Read only when the mode is `days`. */
+  days?: number
+}
+
+export const DEFAULT_LATE_FEE_CAP: LateFeeCap = { mode: 'days', days: 25 }
+
+/** Days past grace, after the standing cap is applied. */
+export function cappedLateDays(
+  rawDays: number,
+  charge: { year: number; month: number },
+  cap: LateFeeCap = DEFAULT_LATE_FEE_CAP,
+): number {
+  if (rawDays <= 0) return 0
+  if (cap.mode === 'none') return rawDays
+  if (cap.mode === 'days') return Math.min(rawDays, cap.days ?? 25)
+  const lastDay = new Date(charge.year, charge.month + 1, 0).getDate()
+  return Math.min(rawDays, Math.max(0, lastDay - GRACE_THROUGH_DAY))
+}
+
 export interface Payment {
   id: string
   leaseId: string
@@ -167,6 +208,10 @@ export interface ChargeStatus {
   daysToPay?: number
   /** Days past the grace period. Accrues to today while a balance is open. */
   lateDays: number
+  /** Of those, the days actually charged for once the standing cap is applied. */
+  chargeableDays: number
+  /** True where the cap stopped the fee short of the days actually run. */
+  lateFeeCapped: boolean
   /** What the fee comes to, before anything paid against it. */
   lateFee: number
   /** How much of that fee has actually been collected. */
@@ -246,6 +291,8 @@ export function statusOf(
       // corrupt every payer statistic built on it.
       daysToPay: undefined,
       lateDays: 0,
+      chargeableDays: 0,
+      lateFeeCapped: false,
       lateFee: 0,
       lateFeePaid: 0,
       lateFeeOutstanding: 0,
@@ -263,7 +310,10 @@ export function statusOf(
     ? Math.max(0, wholeDaysBetween(charge.graceThrough, lateFrom))
     : 0
 
-  const fee = waived ? 0 : lateDays * LATE_FEE_PER_DAY
+  // Days the money was outstanding, and days actually charged for — the second
+  // is the first with the landlord's standing cap applied.
+  const chargeableDays = cappedLateDays(lateDays, charge, settings.lateFeeCap)
+  const fee = waived ? 0 : chargeableDays * LATE_FEE_PER_DAY
   const feePaid = mine.reduce((a, p) => a + (p.lateFeeCollected ?? 0), 0)
 
   const state: ChargeState =
@@ -281,6 +331,8 @@ export function statusOf(
     state,
     daysToPay: settledOn ? wholeDaysBetween(charge.dueDate, settledOn) : undefined,
     lateDays,
+    chargeableDays,
+    lateFeeCapped: chargeableDays < lateDays,
     lateFee: fee,
     lateFeePaid: feePaid,
     lateFeeOutstanding: Math.max(0, fee - feePaid),
@@ -430,6 +482,8 @@ export interface CollectionSettings {
   /** When the declaration was made, and by whom, so it can be read back later. */
   settledDeclaredOn?: string
   settledNote?: string
+  /** Where the late fee stops running. Unset means the standing default. */
+  lateFeeCap?: LateFeeCap
   /**
    * Which batch of documented payments this ledger has already taken.
    *
@@ -498,6 +552,11 @@ export const MONTH_NAMES = [
  * be moved or cleared on the Rent collection screen.
  */
 export const DEFAULT_COLLECTION: CollectionSettings = {
+  // "25 days after the 5th is $375.00 where I stop it" — the owner, 2 September
+  // 2026. His other sentence, about not letting anyone past the last day of the
+  // month, gives a different answer in a thirty-one-day month, so this is the
+  // one he put a figure on. Change `mode` to 'month-end' to follow the other.
+  lateFeeCap: DEFAULT_LATE_FEE_CAP,
   settledThrough: '2026-08',
   settledDeclaredOn: '2026-08-31',
   settledNote: 'Confirmed by Mr. Shirazi on 31 August 2026: every tenant current through August '
