@@ -34,8 +34,12 @@ import type { InvestmentAsset } from '../lib/assets'
  * of these turns out to compound, its frequency can be set on the row.
  */
 
-/** Bumped whenever rows are added below, so a saved register picks them up once. */
-export const INVESTMENT_SEED_VERSION = 3
+/**
+ * Bumped whenever rows are added below — or vehicles are added alongside them —
+ * so a saved register picks up the new ones once. It covers the whole register,
+ * not only this file.
+ */
+export const INVESTMENT_SEED_VERSION = 4
 
 const MILLENNIUM = 'Millennium Bank'
 

@@ -117,6 +117,8 @@ export interface VehicleAsset {
   purchaseDate?: string
   /** Dealer or private party the car was bought from. */
   purchasedFrom?: string
+  /** Odometer the day it was bought, so the miles since are computable. */
+  purchaseMiles?: number
   currentMiles?: number
   currentValue?: number
   /** Plate, insurer, where it is kept — whatever is worth remembering. */
@@ -160,7 +162,7 @@ export const needsSeed = (r: AssetRegister, version: number): boolean =>
   (r.seedVersion ?? 0) < version
 
 /**
- * Merge seeded deposits into a register, once.
+ * Merge seeded deposits and vehicles into a register, once.
  *
  * Rows already present by id are left exactly as they are — an edited balance
  * must survive, or the seed would quietly overwrite a correction. Only genuinely
@@ -168,13 +170,18 @@ export const needsSeed = (r: AssetRegister, version: number): boolean =>
  * stays deleted.
  */
 export function applySeed(
-  r: AssetRegister, seeded: InvestmentAsset[], version: number,
+  r: AssetRegister,
+  seeded: InvestmentAsset[],
+  version: number,
+  seededVehicles: VehicleAsset[] = [],
 ): AssetRegister {
   if (!needsSeed(r, version)) return r
-  const have = new Set(r.investments.map((i) => i.id))
+  const haveAccounts = new Set(r.investments.map((i) => i.id))
+  const haveCars = new Set(r.vehicles.map((v) => v.id))
   return {
     ...r,
-    investments: [...r.investments, ...seeded.filter((i) => !have.has(i.id))],
+    investments: [...r.investments, ...seeded.filter((i) => !haveAccounts.has(i.id))],
+    vehicles: [...r.vehicles, ...seededVehicles.filter((v) => !haveCars.has(v.id))],
     seedVersion: version,
   }
 }
@@ -192,6 +199,31 @@ export const vehicleValue = (v: VehicleAsset): number => v.currentValue ?? 0
 
 /** Whether a vehicle's worth is known at all, as against known to be zero. */
 export const vehicleValued = (v: VehicleAsset): boolean => v.currentValue !== undefined
+
+/**
+ * Miles driven since it was bought.
+ *
+ * Undefined where either reading is missing, and — deliberately — where the
+ * current reading is below the one at purchase. That is not a car that drove
+ * backwards; it is two figures that cannot both be right, and returning a
+ * negative number would bury the problem inside an average.
+ */
+export const milesDriven = (v: VehicleAsset): number | undefined => {
+  if (v.purchaseMiles === undefined || v.currentMiles === undefined) return undefined
+  const driven = v.currentMiles - v.purchaseMiles
+  return driven >= 0 ? driven : undefined
+}
+
+/** True where the odometer readings contradict each other. */
+export const odometerContradicts = (v: VehicleAsset): boolean =>
+  v.purchaseMiles !== undefined && v.currentMiles !== undefined
+  && v.currentMiles < v.purchaseMiles
+
+/** What a vehicle has lost against what was paid for it. */
+export const vehicleDepreciation = (v: VehicleAsset): number | undefined =>
+  v.purchasePrice === undefined || v.currentValue === undefined
+    ? undefined
+    : v.currentValue - v.purchasePrice
 
 /**
  * Interest a deposit throws off in a year at its stated rate.

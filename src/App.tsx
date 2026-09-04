@@ -30,6 +30,7 @@ import { Assets } from './views/Assets'
 import { TaxReturns } from './views/TaxReturns'
 import { EMPTY_REGISTER, applySeed, needsSeed, type AssetRegister } from './lib/assets'
 import { INVESTMENT_SEED_VERSION, SEEDED_INVESTMENTS } from './data/investments'
+import { SEEDED_VEHICLES } from './data/vehicles'
 import { PAYMENT_SEED_VERSION, SEEDED_PAYMENTS } from './data/payments'
 import { Trust } from './views/Trust'
 import { EMPTY_TRUST_STATE, resolveTrust, type TrustState } from './lib/trust'
@@ -95,7 +96,7 @@ export default function App() {
   const collectionState = useStored<CollectionSettings>(STORE_KEYS.collection, DEFAULT_COLLECTION)
   const assetState = useStored<AssetRegister>(
     STORE_KEYS.assets,
-    applySeed(EMPTY_REGISTER, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION),
+    applySeed(EMPTY_REGISTER, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION, SEEDED_VEHICLES),
   )
   const trustState = useStored<TrustState>(STORE_KEYS.trust, EMPTY_TRUST_STATE)
 
@@ -107,7 +108,7 @@ export default function App() {
   useEffect(() => {
     if (!assetLoaded) return
     if (!needsSeed(assetRegister, INVESTMENT_SEED_VERSION)) return
-    assetSetValue(applySeed(assetRegister, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION))
+    assetSetValue(applySeed(assetRegister, SEEDED_INVESTMENTS, INVESTMENT_SEED_VERSION, SEEDED_VEHICLES))
   }, [assetLoaded, assetRegister, assetSetValue])
 
   // Payments read off invoices ship with the application, the same way the bank

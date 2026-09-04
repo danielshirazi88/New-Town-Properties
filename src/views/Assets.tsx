@@ -5,7 +5,7 @@ import { dateLabel, money, num, pct } from '../lib/format'
 import {
   INTEREST_FREQUENCIES, INVESTMENT_KINDS, annualInterest, assetBreakdown, assetTotals,
   blendedRate, byInstitution, byRate, frequencyLabel, investmentKindLabel, maturities,
-  maturitySchedule, newAssetId,
+  maturitySchedule, milesDriven, newAssetId, odometerContradicts,
   realEstateTotals, registerInterest, vehicleValued,
   type AssetRegister, type InvestmentAsset, type InvestmentKind, type InterestFrequency,
   type VehicleAsset,
@@ -654,7 +654,19 @@ function Vehicles({ rows, onChange }: { rows: VehicleAsset[]; onChange: (next: V
                       <td className="t-mute" style={{ fontSize: 12 }}>{v.purchasedFrom || '—'}</td>
                       <td className="t-mono t-mute" style={{ fontSize: 12 }}>{dateLabel(v.purchaseDate)}</td>
                       <td className="num t-mute">{v.purchasePrice ? money(v.purchasePrice) : '—'}</td>
-                      <td className="num t-mute">{v.currentMiles !== undefined ? num(v.currentMiles) : '—'}</td>
+                      <td className="num t-mute">
+                        {v.currentMiles !== undefined ? num(v.currentMiles) : '—'}
+                        {milesDriven(v) !== undefined && (
+                          <div style={{ fontSize: 11 }}>{num(milesDriven(v)!)} driven</div>
+                        )}
+                        {odometerContradicts(v) && (
+                          <div className="t-red" style={{ fontSize: 11 }}
+                            title={`Recorded at ${num(v.purchaseMiles!)} when bought and `
+                              + `${num(v.currentMiles!)} now — one of the two is wrong`}>
+                            reads lower than at purchase
+                          </div>
+                        )}
+                      </td>
                       <td className="num t-strong">
                         {v.currentValue !== undefined ? money(v.currentValue)
                           : <span className="t-mute" title="Not counted in any total">not valued</span>}
@@ -746,6 +758,10 @@ function VehicleForm({
         <Field label="Purchase date">
           <input type="date" value={d.purchaseDate ?? ''}
             onChange={(e) => setD({ ...d, purchaseDate: e.target.value || undefined })} />
+        </Field>
+        <Field label="Miles when bought">
+          <input inputMode="numeric" value={d.purchaseMiles ?? ''}
+            onChange={(e) => setD({ ...d, purchaseMiles: n(e.target.value) })} />
         </Field>
         <Field label="Current miles">
           <input inputMode="numeric" value={d.currentMiles ?? ''}
